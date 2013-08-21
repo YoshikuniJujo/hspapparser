@@ -16,29 +16,13 @@ import Data.Maybe
 import Control.Applicative
 import Control.Arrow
 
-type ParseM = State (Int, ([Int], [Tkn]))
+type ParseM = State [Int]
 
 pushX :: Int -> ParseM Bool
-pushX x = modify (second $ first (x :)) >> return True
+pushX x = modify (x :) >> return True
 
 popX :: ParseM Bool
-popX = modify (second $ first tail) >> return True
-
-setQueue :: [Tkn] -> ParseM ()
-setQueue tkns = modify (second $ second $ const tkns)
-
-popQueue :: ParseM Tkn
-popQueue = do
-	(x, (xs, tkn : tkns)) <- get
-	put (x, (xs, tkns))
-	return tkn
-
-getSemiVCBs :: Int -> [Int] -> [Tkn]
-getSemiVCBs _ [] = []
-getSemiVCBs x0 (x1 : xs)
-	| x0 > x1 = []
-	| x0 == x1 = [TSemicolon]
-	| otherwise = TVCBrace : getSemiVCBs x0 xs
+popX = modify tail >> return True
 
 haskell :: QuasiQuoter
 haskell = QuasiQuoter {
@@ -49,27 +33,27 @@ haskell = QuasiQuoter {
  }
 
 haskellExp :: String -> Exp
-haskellExp src = case flip evalState (0, ([], [])) $ runErrorT $ expA $ parse src of
+haskellExp src = case flip evalState [] $ runErrorT $ expA $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
 haskellPat :: String -> Pat
-haskellPat src = case flip evalState (0, ([], [])) $ runErrorT $ patA $ parse src of
+haskellPat src = case flip evalState [] $ runErrorT $ patA $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
 haskellTyp :: String -> Type
-haskellTyp src = case flip evalState (0, ([], [])) $ runErrorT $ typA $ parse src of
+haskellTyp src = case flip evalState [] $ runErrorT $ typA $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
 testTkn :: String -> Tkn
-testTkn src = case flip evalState (0, ([], [])) $ runErrorT $ tkn $ parse src of
+testTkn src = case flip evalState [] $ runErrorT $ tkn $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
 testLit :: String -> Lit
-testLit src = case flip evalState (0, ([], [])) $ runErrorT $ lit $ parse src of
+testLit src = case flip evalState [] $ runErrorT $ lit $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
@@ -152,11 +136,14 @@ exp1 :: Exp
 						{ return $ CondE p t e }
 	/ TLet:lx TOBrace:lx ds:decs TCBrace:lx TIn:lx e:exp
 						{ return $ LetE ds e }
-	/ TLet:lx &(_, x):lxp[pushX x] ds:decs _:(TVCBrace:lx)? TIn:lx[popX] e:exp
+	/ TLet:lx &(_, x):lxp[pushX x] ds:decs TIn:lx[popX] e:exp
 						{ return $ LetE ds e }
---	/ TCase:lx e:exp TOf:lx ms:matches	{ return $ CaseE e ms }
+	/ TCase:lx e:exp TOf:lx TOBrace:lx ms:matches TCBrace:lx
+						{ return $ CaseE e ms }
+	/ TCase:lx e:exp TOf:lx &(_, x):lxp[pushX x] ms:matches[popX]
+						{ return $ CaseE e ms }
 	/ TDo:lx TOBrace:lx ss:stmts TCBrace:lx	{ return $ DoE ss }
-	/ TDo:lx &(_, x):lxp[pushX x] ss:stmts TVCBrace:lx[popX]
+	/ TDo:lx &(_, x):lxp[pushX x] ss:stmts[popX]
 						{ return $ DoE ss }
 
 patA :: Pat = p:pat _:space* !_			{ return p }
@@ -212,25 +199,28 @@ typTup :: [Type] = t0:typ ts:(TComma:lx t:typ { return t })*
 						{ return $ t0 : ts }
 
 decs :: [Dec]
-	= md:dec? mds:(TSemicolon:lx md:dec? { return md })*
-						{ return $ maybeToList md ++
-							catMaybes mds }
+	= md:dec? TSemicolon:lx ds:decs		{ return $ maybe ds (: ds) md }
+	/ md:dec? '\n'+ &(_, x):lxp[gets $ (== x) . head] ds:decs
+						{ return $ maybe ds (: ds) md }
+	/ md:dec?				{ return $ maybeToList md }
 
 dec :: Dec
 	= p:pat TEq:lx e:exp			{ return $ ValD p (NormalB e) [] }
 
 matches :: [Match]
-	= mm:match? mms:(TSemicolon:lx mm:match? { return mm })*
-						{ return $ maybeToList mm ++
-							catMaybes mms }
+	= mm:match? TSemicolon:lx ms:matches	{ return $ maybe ms (: ms) mm }
+	/ mm:match? '\n'+ &(_, x):lxp[gets $ (== x) . head] ms:matches
+						{ return $ maybe ms (: ms) mm }
+	/ mm:match?				{ return $ maybeToList mm }
 
 match :: Match
 	= p:pat TRightArrow:lx e:exp		{ return $ Match p (NormalB e) [] }
 
 stmts :: [Stmt]
-	= ms:stmt? mss:(TSemicolon:lx ms:stmt? { return ms })*
-						{ return $ maybeToList ms ++
-							catMaybes mss }
+	= ms:stmt? TSemicolon:lx ss:stmts	{ return $ maybe ss (: ss) ms }
+	/ ms:stmt? '\n'+ &(_, x):lxp[gets $ (== x) . head] ss:stmts
+						{ return $ maybe ss (: ss) ms }
+	/ ms:stmt?				{ return $ maybeToList ms }
 
 stmt :: Stmt
 	= e:exp					{ return $ NoBindS e }
@@ -247,9 +237,11 @@ tyVarBndr :: TyVarBndr
 --	/ (TVar v):lx TTypeDef:lx t:typ		{ return $ KindedTV (mkName v) t }
 
 lx :: Tkn
+{-
 	= _:position[not . null . snd . snd <$> get]
 						{ popQueue }
-	/ (!(t, _)):lxp				{ return t }
+-}
+	= (!(t, _)):lxp				{ return t }
 
 lxp :: (Tkn, Int)
 	= _:space* (!ListPos (CharPos (_, x))):position t:tkn
@@ -287,7 +279,7 @@ tkn :: Tkn
 	/ ':' o:<isOp>+				{ return $ TOpCon $ ':' : o }
 	/ o:<isOp>+				{ return $ TOp o }
 	/ _:semicolon				{ return $ TSemicolon }
-	/ _:vcbrace				{ return $ TVCBrace }
+--	/ _:vcbrace				{ return $ TVCBrace }
 
 var :: String = h:<isLower_> t:<isVar>*		{ return $ h : t }
 con :: String = h:<isUpper> t:<isVar>*		{ return $ h : t }
@@ -311,12 +303,12 @@ escChar :: Char
 	/ 't'					{ return '\t' }
 
 space	= _:<(`elem` " \t")>
-	/ _:('\n')[ null . fst . snd <$> get ]
-	/ '\n'+ _:<(`elem` " \t")>* &(_, x):lxp[
-		(x >) . head . fst . snd <$> get ]
+	/ _:('\n')[ gets null ]
+	/ '\n'+ _:<(`elem` " \t")>* &(_, x):lxp[gets $ (x >) . head ]
 
 semicolon
 	= ';'
+{-
 	/ '\n'+ _:<(`elem` " \t")>* &(_, x):lxp[
 		(x ==) . head . fst . snd <$> get ]
 
@@ -331,5 +323,6 @@ vcbrace	= '\n'+ _:<(`elem` " \t")>* &(_, x):lxp[
 			return (replicate (length x) TVCBrace) >>=
 			modify . (second . second . const)) }
 -- getSemiVCBs :: Int -> [Int] -> [Tkn]
+-}
 
 |]

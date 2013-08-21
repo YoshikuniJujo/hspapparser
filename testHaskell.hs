@@ -21,10 +21,23 @@ z :: IO ()
 z = [haskell|
 
 do print 8
-   print 10
-   times 3 $ do print 15
-                print 25
-   print 7
+   print 10000
+   times 2 $ do print 1500000
+                times 3 $ do
+			print 25
+			print 1
+   print 7000
    print 9
+
+|]
+
+w :: Int
+w = [haskell|
+
+let x =
+	case 33 of
+		25 -> 11
+		32 -> 4
+		33 -> 888 in x
 
 |]
