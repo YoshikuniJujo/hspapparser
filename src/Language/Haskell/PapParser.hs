@@ -228,8 +228,12 @@ typ1 :: Type
 typTup :: [Type] = t0:typ ts:(TComma:lx t:typ { return t })*
 						{ return $ t0 : ts }
 
--- pred :: Pred
---	= (TCon c)
+pred :: Pred
+	= (TCon c):lx t:typ1			{ return $ ClassP (mkName c) [t] }
+	/ (TCon c):lx TOParen:lx t0:typ ts:(TComma:lx t:typ { return t })* TOParen:lx
+						{ return $ ClassP (mkName c) $
+							t0 : ts }
+--	/ 
 
 decsA :: [Dec] = ds:decs _:space* !_		{ return ds }
 
