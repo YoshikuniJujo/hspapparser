@@ -7,3 +7,45 @@ SigP と ViewP は、Type と Exp の parser を書いてからにする。
 layout rule で複数の indent をまたぐ場合がうまくいかない。
 state に保存しておいて、そこから取り出すことを試してみたが、
 これは、失敗したときに問題となると思う。
+
+たとえば、
+
+do hoge
+   boke
+   do kasu
+      tako
+   piyo
+
+は、
+
+do {hoge
+   ;boke
+   ;do {kasu
+       ;tako
+   };piyo
+}
+
+となる必要がある。
+しかし、piyo のインデントによって、'}' と ';' の2つのトークンを返さなければならない。
+これは LL の範疇で出来ることだろうか?
+
+stmts が indent を返すようにしたらどうだろうか。
+新たな行がより残いインデントを返した場合、
+
+exp が indent を返すようにした場合どうなるか。
+まず、stmts のところで indent がより浅かったなら、その前で終わる。
+これでうまくいきそうだな。
+
+test 環境でやってみようかな。
+
+exp = var
+
+stmts = exp (';' exp)*
+
+} を入れる代わりに、そこで終わると考える。
+
+stmts	= exp &(_, x):lx[x == ...] stmts
+	/ exp &(_, x):lx[x < ...]?
+
+space	= ...
+	/ \n+ &(_, x):lx[x > ...]
