@@ -86,6 +86,7 @@ data Tkn
 	| TTypeDef
 	| TRightArrow
 	| TLeftArrow
+	| TDotDot
 	| TForall
 	| TBackslash
 	| TIf
@@ -107,20 +108,25 @@ expA :: Exp = e:exp _:space* !_			{ return e }
 
 exp :: Exp = e:expInfix				{ return e }
 
-expInfix :: Exp
-	= lft:expApp ors:(o:operator r:expApp { return (o, r) })*
+expInfix :: Exp = lft:expApp ors:(o:operator r:expApp { return (o, r) })*
 						{ return $ foldl
 							(\l (o, r) -> UInfixE l o r)
 							lft ors }
 
-operator :: Exp
-	= (TOp o):lx				{ return $ VarE $ mkName o }
+operator :: Exp = (TOp o):lx			{ return $ VarE $ mkName o }
 
-expApp :: Exp
-	= f:exp1 as:exp1*			{ return $ foldl AppE f as }
+expApp :: Exp = f:expSig as:expSig*		{ return $ foldl AppE f as }
+
+expSig :: Exp = e:expRec mt:(TTypeDef:lx t:typ { return t })?
+						{ return $ maybe e (SigE e) mt }
+
+expRec :: Exp = e:exp1 mfes:(TOBrace:lx fes:fieldExps TCBrace:lx { return fes })?
+						{ return $ maybe e (RecUpdE e) mfes }
 
 exp1 :: Exp
 	= (TVar v):lx				{ return $ VarE $ mkName v }
+	/ (TCon c):lx TOBrace:lx fes:fieldExps TCBrace:lx
+						{ return $ RecConE (mkName c) fes }
 	/ (TCon c):lx				{ return $ ConE $ mkName c }
 	/ (TLit l):lx				{ return $ LitE l }
 	/ !_:(TOParen:lx !_:expApp TCParen:lx)
@@ -136,15 +142,26 @@ exp1 :: Exp
 						{ return $ CondE p t e }
 	/ TLet:lx TOBrace:lx ds:decs TCBrace:lx TIn:lx e:exp
 						{ return $ LetE ds e }
-	/ TLet:lx &(_, x):lxp[pushX x] ds:decs TIn:lx[popX] e:exp
+	/ TLet:lx &(!(_, x)):lxp[pushX x] ds:decs TIn:lx[popX] e:exp
 						{ return $ LetE ds e }
 	/ TCase:lx e:exp TOf:lx TOBrace:lx ms:matches TCBrace:lx
 						{ return $ CaseE e ms }
-	/ TCase:lx e:exp TOf:lx &(_, x):lxp[pushX x] ms:matches[popX]
+	/ TCase:lx e:exp TOf:lx &(!(_, x)):lxp[pushX x] ms:matches[popX]
 						{ return $ CaseE e ms }
 	/ TDo:lx TOBrace:lx ss:stmts TCBrace:lx	{ return $ DoE ss }
-	/ TDo:lx &(_, x):lxp[pushX x] ss:stmts[popX]
+	/ TDo:lx &(!(_, x)):lxp[pushX x] ss:stmts[popX]
 						{ return $ DoE ss }
+	/ TOBracket:lx TCBracket:lx		{ return $ ListE [] }
+	/ TOBracket:lx e0:exp es:(TComma:lx e:exp { return e })* TCBracket:lx
+						{ return $ ListE $ e0 : es }
+	/ TOBracket:lx r:range TCBracket:lx	{ return $ ArithSeqE r }
+
+range :: Range
+	= e1:exp TComma:lx e2:exp TDotDot:lx en:exp
+						{ return $ FromThenToR e1 e2 en }
+	/ e1:exp TComma:lx e2:exp TDotDot:lx	{ return $ FromThenR e1 e2 }
+	/ e1:exp TDotDot:lx en:exp		{ return $ FromToR e1 en }
+	/ e:exp TDotDot:lx			{ return $ FromR e }
 
 patA :: Pat = p:pat _:space* !_			{ return p }
 
@@ -200,7 +217,7 @@ typTup :: [Type] = t0:typ ts:(TComma:lx t:typ { return t })*
 
 decs :: [Dec]
 	= md:dec? TSemicolon:lx ds:decs		{ return $ maybe ds (: ds) md }
-	/ md:dec? '\n'+ &(_, x):lxp[gets $ (== x) . head] ds:decs
+	/ md:dec? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head] ds:decs
 						{ return $ maybe ds (: ds) md }
 	/ md:dec?				{ return $ maybeToList md }
 
@@ -209,7 +226,7 @@ dec :: Dec
 
 matches :: [Match]
 	= mm:match? TSemicolon:lx ms:matches	{ return $ maybe ms (: ms) mm }
-	/ mm:match? '\n'+ &(_, x):lxp[gets $ (== x) . head] ms:matches
+	/ mm:match? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head] ms:matches
 						{ return $ maybe ms (: ms) mm }
 	/ mm:match?				{ return $ maybeToList mm }
 
@@ -218,33 +235,31 @@ match :: Match
 
 stmts :: [Stmt]
 	= ms:stmt? TSemicolon:lx ss:stmts	{ return $ maybe ss (: ss) ms }
-	/ ms:stmt? '\n'+ &(_, x):lxp[gets $ (== x) . head] ss:stmts
+	/ ms:stmt? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head] ss:stmts
 						{ return $ maybe ss (: ss) ms }
 	/ ms:stmt?				{ return $ maybeToList ms }
 
 stmt :: Stmt
 	= e:exp					{ return $ NoBindS e }
 
-fieldPats :: [FieldPat]
-	= fp:fieldPt fps:(TComma:lx fp:fieldPt { return fp })*
+fieldExps :: [FieldExp] = fe:fieldE fes:(TComma:lx fe:fieldE { return fe })*
+						{ return $ fe : fes }
+
+fieldE :: FieldExp = (TVar v):lx TEq:lx e:exp	{ return (mkName v, e) }
+						
+
+fieldPats :: [FieldPat] = fp:fieldPt fps:(TComma:lx fp:fieldPt { return fp })*
 						{ return $ fp : fps }
 
-fieldPt :: FieldPat
-	= (TVar v):lx TEq:lx p:pat		{ return (mkName v, p) }
+fieldPt :: FieldPat = (TVar v):lx TEq:lx p:pat	{ return (mkName v, p) }
 
 tyVarBndr :: TyVarBndr
 	= (TVar v):lx				{ return $ PlainTV $ mkName v }
 --	/ (TVar v):lx TTypeDef:lx t:typ		{ return $ KindedTV (mkName v) t }
 
-lx :: Tkn
-{-
-	= _:position[not . null . snd . snd <$> get]
-						{ popQueue }
--}
-	= (!(t, _)):lxp				{ return t }
+lx :: Tkn = (!(t, _)):lxp			{ return t }
 
-lxp :: (Tkn, Int)
-	= _:space* (!ListPos (CharPos (_, x))):position t:tkn
+lxp :: (Tkn, Int) = _:space* (!ListPos (CharPos (_, x))):position t:tkn
 						{ return (t, x) }
 
 tkn :: Tkn
@@ -271,6 +286,7 @@ tkn :: Tkn
 	/ ':' ':' !_:<isOp>			{ return TTypeDef }
 	/ '-' '>' !_:<isOp>			{ return TRightArrow }
 	/ '<' '-' !_:<isOp>			{ return TLeftArrow }
+	/ '.' '.' !_:<isOp>			{ return TDotDot }
 	/ l:lit					{ return $ TLit l }
 	/ qs:(q:con '.' { return q })* v:var	{ return $ TVar $ concatMap
 							(++ ".") qs ++ v }
@@ -278,8 +294,7 @@ tkn :: Tkn
 							(++ ".") qs ++ t }
 	/ ':' o:<isOp>+				{ return $ TOpCon $ ':' : o }
 	/ o:<isOp>+				{ return $ TOp o }
-	/ _:semicolon				{ return $ TSemicolon }
---	/ _:vcbrace				{ return $ TVCBrace }
+	/ ';'					{ return $ TSemicolon }
 
 var :: String = h:<isLower_> t:<isVar>*		{ return $ h : t }
 con :: String = h:<isUpper> t:<isVar>*		{ return $ h : t }
@@ -304,25 +319,6 @@ escChar :: Char
 
 space	= _:<(`elem` " \t")>
 	/ _:('\n')[ gets null ]
-	/ '\n'+ _:<(`elem` " \t")>* &(_, x):lxp[gets $ (x >) . head ]
-
-semicolon
-	= ';'
-{-
-	/ '\n'+ _:<(`elem` " \t")>* &(_, x):lxp[
-		(x ==) . head . fst . snd <$> get ]
-
-vcbrace	= '\n'+ _:<(`elem` " \t")>* &(_, x):lxp[
-		modify (first $ const x) >>
-		(x <) . head . fst . snd <$> get ]
-		{ gets fst >>= (\x ->
-			(getSemiVCBs x . fst . snd <$> get) >>=
-			modify . (second . second . const)) }
-	/ !_:[ not . null . fst . snd <$> get ]
-		{ gets (fst . snd) >>= (\x ->
-			return (replicate (length x) TVCBrace) >>=
-			modify . (second . second . const)) }
--- getSemiVCBs :: Int -> [Int] -> [Tkn]
--}
+	/ '\n'+ _:<(`elem` " \t")>* &(!(_, x)):lxp[gets $ (x >) . head ]
 
 |]

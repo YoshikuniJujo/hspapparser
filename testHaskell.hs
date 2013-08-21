@@ -34,10 +34,28 @@ do print 8
 w :: Int
 w = [haskell|
 
-let x =
-	case 33 of
-		25 -> 11
-		32 -> 4
-		33 -> 888 in x
+let x = case 33 of
+	25 -> 11
+	32 -> 4
+	33 -> 888 in x
+
+|]
+
+data Some = Some {
+	some :: Int,
+	other :: String }
+	deriving Show
+
+v :: Some
+v = [haskell|
+
+Some { some = 8, other = "hoge" }
+
+|]
+
+u :: Some
+u = [haskell|
+
+v { other = "eight" }
 
 |]
