@@ -35,9 +35,9 @@ w :: Int
 w = [haskell|
 
 let x = case 33 of
-	25 -> 11
+	25 -> eleven where eleven = 11
 	32 -> 4
-	33 -> 888 in x
+	33 -> eee where eee = 888 in x
 
 |]
 
@@ -57,5 +57,18 @@ u :: Some
 u = [haskell|
 
 v { other = "eight" }
+
+|]
+
+[haskell|
+
+t = t' where t' = t''
+	     t'' = 999;
+s = 32; r = 95
+
+someFun 3 = 8;
+
+someFun 9 = 77
+otherFun 8 = 7
 
 |]

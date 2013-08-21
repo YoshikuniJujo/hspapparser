@@ -29,7 +29,7 @@ haskell = QuasiQuoter {
 	quoteExp = return . haskellExp,
 	quotePat = return . haskellPat,
 	quoteType = return . haskellTyp,
-	quoteDec = undefined
+	quoteDec = return . haskellDec
  }
 
 haskellExp :: String -> Exp
@@ -44,6 +44,11 @@ haskellPat src = case flip evalState [] $ runErrorT $ patA $ parse src of
 
 haskellTyp :: String -> Type
 haskellTyp src = case flip evalState [] $ runErrorT $ typA $ parse src of
+	Right (p, _) -> p
+	Left _ -> error "parse error"
+
+haskellDec :: String -> [Dec]
+haskellDec src = case flip evalState [1] $ runErrorT $ decsA $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
@@ -89,6 +94,7 @@ data Tkn
 	| TDotDot
 	| TForall
 	| TBackslash
+	| TVBar
 	| TIf
 	| TThen
 	| TElse
@@ -97,6 +103,7 @@ data Tkn
 	| TCase
 	| TOf
 	| TDo
+	| TWhere
 	| TSemicolon
 	deriving Show
 
@@ -215,14 +222,41 @@ typ1 :: Type
 typTup :: [Type] = t0:typ ts:(TComma:lx t:typ { return t })*
 						{ return $ t0 : ts }
 
+decsA :: [Dec] = ds:decs _:space* !_		{ return ds }
+
 decs :: [Dec]
 	= md:dec? TSemicolon:lx ds:decs		{ return $ maybe ds (: ds) md }
 	/ md:dec? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head] ds:decs
 						{ return $ maybe ds (: ds) md }
+	/ md:dec? '\n'+ !_			{ return $ maybeToList md }
 	/ md:dec?				{ return $ maybeToList md }
 
 dec :: Dec
-	= p:pat TEq:lx e:exp			{ return $ ValD p (NormalB e) [] }
+	= p:pat TEq:lx b:body w:whr?		{ return $ ValD p b $
+							fromMaybe [] w }
+	/ (TVar v0):lx c0:cls
+		mcs:(_:(TSemicolon:lx / '\n'+ &(!(_, x)):lxp[gets $ (== x) . head])+
+		(TVar v):lx[return $ v == v0] c:cls { return c })*
+						{ return $ FunD (mkName v0) $
+							c0 : mcs }
+
+cls :: Clause
+	= ps:pat1+ TEq:lx b:body w:whr?		{ return $ Clause ps b $
+							fromMaybe [] w }
+
+body :: Body
+	= e:exp					{ return $ NormalB e }
+	/ gs:(TVBar:lx g:grd TEq:lx e:exp { return (g, e) })+
+						{ return $ GuardedB gs }
+
+grd :: Guard
+	= e:exp					{ return $ NormalG e }
+
+whr :: [Dec]
+	= TWhere:lx TOBrace:lx ds:decs TCBrace:lx
+						{ return ds }
+	/ TWhere:lx &(!(_, x)):lxp[pushX x] ds:decs[popX]
+						{ return ds }
 
 matches :: [Match]
 	= mm:match? TSemicolon:lx ms:matches	{ return $ maybe ms (: ms) mm }
@@ -231,7 +265,8 @@ matches :: [Match]
 	/ mm:match?				{ return $ maybeToList mm }
 
 match :: Match
-	= p:pat TRightArrow:lx e:exp		{ return $ Match p (NormalB e) [] }
+	= p:pat TRightArrow:lx b:body w:whr?	{ return $ Match p b $
+							fromMaybe [] w }
 
 stmts :: [Stmt]
 	= ms:stmt? TSemicolon:lx ss:stmts	{ return $ maybe ss (: ss) ms }
@@ -272,6 +307,7 @@ tkn :: Tkn
 	/ 'c' 'a' 's' 'e' !_:<isVar>		{ return TCase }
 	/ 'o' 'f' !_:<isVar>			{ return TOf }
 	/ 'd' 'o' !_:<isVar>			{ return TDo }
+	/ 'w' 'h' 'e' 'r' 'e' !_:<isVar>	{ return TWhere }
 	/ '('					{ return TOParen }
 	/ ')'					{ return TCParen }
 	/ '{'					{ return TOBrace }
@@ -283,6 +319,7 @@ tkn :: Tkn
 	/ '@' !_:<isOp>				{ return TAt }
 	/ '=' !_:<isOp>				{ return TEq }
 	/ '\\' !_:<isOp>			{ return TBackslash }
+	/ '|' !_:<isOp>				{ return TVBar }
 	/ ':' ':' !_:<isOp>			{ return TTypeDef }
 	/ '-' '>' !_:<isOp>			{ return TRightArrow }
 	/ '<' '-' !_:<isOp>			{ return TLeftArrow }
