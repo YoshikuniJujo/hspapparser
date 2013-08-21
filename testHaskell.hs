@@ -5,6 +5,9 @@ import Language.Haskell.PapParser
 x :: [haskell| forall a . (->) a a |]
 x = undefined
 
+xx :: [haskell| forall a . a -> a |]
+xx = id
+
 y :: [haskell| (Int, Int) |]
 y = [haskell|
 

@@ -203,7 +203,13 @@ pat1 :: Pat
 
 typA :: Type = p:typ _:space* !_		{ return p }
 
-typ :: Type = t:typApp				{ return t }
+typ :: Type = t:typInf				{ return t }
+
+typInf :: Type
+	= t0:typApp ts:(TRightArrow:lx t:typApp { return t })*
+						{ return $ foldl (\x y ->
+							ArrowT `AppT` x `AppT` y)
+							t0 ts }
 
 typApp :: Type
 	= t:typ1 ts:typ1*			{ return $ foldl AppT t ts }
@@ -221,6 +227,9 @@ typ1 :: Type
 
 typTup :: [Type] = t0:typ ts:(TComma:lx t:typ { return t })*
 						{ return $ t0 : ts }
+
+-- pred :: Pred
+--	= (TCon c)
 
 decsA :: [Dec] = ds:decs _:space* !_		{ return ds }
 
