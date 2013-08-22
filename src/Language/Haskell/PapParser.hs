@@ -112,6 +112,9 @@ data Tkn
 	| TDeriving
 	| TClass
 	| TInstance
+	| TInfix
+	| TInfixl
+	| TInfixr
 	| TSemicolon
 	deriving Show
 
@@ -329,6 +332,14 @@ dec :: Dec
 							t ds }
 	/ (TVar v):lx TTypeDef:lx t:typ		{ return $ SigD (mkName v) t }
 
+{-
+infixd :: [Dec]
+	= TInfix:lx (TLit (IntegerL n)):lx (TOp o0):lx
+		os:(TComma:lx (TOp o):lx { o })*{ return $ map (InfixD $
+							Fixity (fromIntegral n)
+								InfixN) $ o0 : os }
+-}
+
 cons :: Con
 	= (TCon c):lx ts:(t:strictType { return t })*
 						{ return $ NormalC (mkName c) ts }
@@ -419,6 +430,9 @@ tkn :: Tkn
 	/ 'c' 'l' 'a' 's' 's' !_:<isVar>	{ return TClass }
 	/ 'i' 'n' 's' 't' 'a' 'n' 'c' 'e' !_:<isVar>
 						{ return TInstance }
+	/ 'i' 'n' 'f' 'i' 'x' !_:<isVar>	{ return TInfix }
+	/ 'i' 'n' 'f' 'i' 'x' 'l' !_:<isVar>	{ return TInfixl }
+	/ 'i' 'n' 'f' 'i' 'x' 'r' !_:<isVar>	{ return TInfixr }
 	/ '('					{ return TOParen }
 	/ ')'					{ return TCParen }
 	/ '{'					{ return TOBrace }
