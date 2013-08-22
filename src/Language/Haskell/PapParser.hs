@@ -1,12 +1,13 @@
 {-# LANGUAGE QuasiQuotes, TypeFamilies, PackageImports #-}
 
 module Language.Haskell.PapParser (
+	haskellSrc,
 	haskell
 ) where
 
 import Prelude hiding (exp, pred)
 import Text.Papillon
-import Language.Haskell.TH hiding (match, cxt, strictType)
+import Language.Haskell.TH hiding (match, cxt, strictType, Pragma)
 import Language.Haskell.TH.Quote
 import "monads-tf" Control.Monad.State
 import "monads-tf" Control.Monad.Error
@@ -41,6 +42,11 @@ haskell = QuasiQuoter {
 	quoteType = return . haskellTyp,
 	quoteDec = return . haskellDec
  }
+
+haskellSrc :: String -> HsSrc
+haskellSrc src = case flip evalState initStat $ runErrorT $ hssrc $ parse src of
+	Right (p, _) -> p
+	Left _ -> error "parse error"
 
 haskellExp :: String -> Exp
 haskellExp src = case flip evalState initStat $ runErrorT $ expA $ parse src of
@@ -80,6 +86,42 @@ isVar = (||) <$> isAlphaNum <*> (`elem` "'_")
 
 isOp :: Char -> Bool
 isOp = (`elem` "!#$%&*+./<=>?@\\^|-~")
+
+data HsSrc = HsSrc {
+	srcPragmas :: [Pragma],
+	srcModule :: Module,
+	srcImports :: [Import],
+	srcDecs :: [Dec]
+ } deriving Show
+
+data Pragma
+	= LanguagePragma [String]
+	| OtherPragma String
+	deriving Show
+
+data Module = Module {
+	modName :: String,
+	exportList :: Maybe [Export]
+ } deriving Show
+
+data Import = Import {
+	packageName :: Maybe String,
+	isQualified :: Bool,
+	impModName ::  String,
+	asName :: Maybe String,
+	isHiding :: Bool,
+	importList :: Maybe [Export]
+ } deriving Show
+
+data Export
+	= EMem Member
+	| EType String (Maybe [Member])
+	deriving Show
+
+data Member
+	= MVar String
+	| MOp String
+	deriving Show
 
 data Tkn
 	= TVar String
@@ -124,7 +166,14 @@ data Tkn
 	| TInfix
 	| TInfixl
 	| TInfixr
+	| TImport
+	| TQualified
+	| TAs
+	| THiding
+	| TModule
 	| TSemicolon
+	| TOPragma
+	| TCPragma
 	deriving Show
 
 putForall :: Type -> Type
@@ -148,6 +197,62 @@ predVars (EqualP t1 t2) = typeVars t1 `union` typeVars t2
 [papillon|
 
 monad: ParseM
+
+hssrc :: HsSrc
+	= ps:pragma* m:mdl &(!(_, x)):lxp[pushX x] is:imprts ds:decsA[popX]
+						{ return $ HsSrc ps m is ds }
+
+pragma :: Pragma
+	= p:languagePragma			{ return p }
+	/ TOPragma:lx s:pragmaStr TCPragma:lx	{ return $ OtherPragma s }
+
+pragmaStr :: String
+	= !TCPragma:lx c s:pragmaStr		{ return $ c : s }
+	/					{ return "" }
+
+languagePragma :: Pragma
+	= TOPragma:lx (TCon c0):lx cs:(TComma:lx (TCon c):lx { return c })*
+		TCPragma:lx			{ return $ LanguagePragma $ c0 : cs }
+
+mdl :: Module
+	= TModule:lx (TCon mod):lx mes:exports? TWhere:lx
+						{ return $ Module mod mes }
+	/					{ return $ Module "Main" Nothing }
+
+imprts :: [Import]
+	= md:imprt? TSemicolon:lx ds:imprts	{ return $ maybe ds (: ds) md }
+	/ md:imprt? _:(_:space / '\n')+ &(!(_, x)):lxp[gets $ (== x) . head . fst]
+		ds:imprts			{ return $ maybe ds (: ds) md }
+	/ md:imprt? _:(_:space / '\n')+ !_	{ return $ maybeToList md }
+	/ md:imprt?				{ return $ maybeToList md }
+
+imprt :: Import
+	= TImport:lx mp:((TLit (StringL p)):lx { return p })? mq:(TQualified:lx)?
+		(TCon mod):lx masn:(TAs:lx (TCon asn):lx { return asn })?
+		mh:(THiding:lx)? mes:exports?
+						{ return $ Import mp (isJust mq)
+							mod masn (isJust mh) mes }
+
+exports :: [Export]
+	= TOParen:lx e0:export es:(TComma:lx e:export { return e })* TCParen:lx
+						{ return $ e0 : es }
+
+export :: Export
+	= (TVar v):lx				{ return $ EMem $ MVar v }
+	/ TOParen:lx
+		o:((TOp po):lx { return po } / (TOpCon co):lx { return co })
+		TCParen:lx			{ return $ EMem $ MOp o }
+	/ (TCon c):lx mms:(TOParen:lx mms':members?
+		TCParen:lx { return $ fromMaybe [] mms' })?
+						{ return $ EType c mms }
+
+members :: [Member] = m0:member ms:(TComma:lx m:member { return m } )*
+						{ return $ m0 : ms }
+
+member :: Member
+	= (TCon c):lx				{ return $ MVar c }
+	/ (TVar v):lx				{ return $ MVar v }
+	/ TOParen:lx (TOpCon o):lx TCParen:lx	{ return $ MOp o }
 
 expA :: Exp = e:exp _:space* !_			{ return e }
 
@@ -287,16 +392,16 @@ decsA :: [Dec] = ds:decs _:space* !_		{ return ds }
 
 decs' :: [Dec]
 	= TOBrace:lx ds:decs TCBrace:lx		{ return ds }
-	/ &_:('\n'* (!(_, x)):lxp[gets $ maybe False (x <=) . listToMaybe . fst])
+	/ &_:(_:('\n' / _:space)* (!(_, x)):lxp[gets $ maybe False (x <=) . listToMaybe . fst])
 						{ return [] }
-	/ &_:('\n'* !_:lx)			{ return [] }
+	/ &_:(_:('\n' / _:space)* !_:lx)	{ return [] }
 	/ &(!(_, x)):lxp[pushX x] ds:decs[popX]	{ return ds }
 
 decs :: [Dec]
 	= md:dec? TSemicolon:lx ds:decs		{ return $ maybe ds (: ds) md }
-	/ md:dec? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst] ds:decs
+	/ md:dec? _:(_:space / '\n')+ &(!(_, x)):lxp[gets $ (== x) . head . fst] ds:decs
 						{ return $ maybe ds (: ds) md }
-	/ md:dec? '\n'+ !_			{ return $ maybeToList md }
+	/ md:dec? _:(_:space / '\n')+ !_	{ return $ maybeToList md }
 	/ md:dec?				{ return $ maybeToList md }
 
 dec :: Dec
@@ -430,7 +535,9 @@ stmts :: [Stmt]
 	/ ms:stmt?				{ return $ maybeToList ms }
 
 stmt :: Stmt
-	= e:exp					{ return $ NoBindS e }
+	= p:pat TLeftArrow:lx e:exp		{ return $ BindS p e }
+	/ e:exp					{ return $ NoBindS e }
+	/ TLet:lx ds:decs'			{ return $ LetS ds }
 
 fieldExps :: [FieldExp] = fe:fieldE fes:(TComma:lx fe:fieldE { return fe })*
 						{ return $ fe : fes }
@@ -474,6 +581,14 @@ tkn :: Tkn
 	/ 'i' 'n' 'f' 'i' 'x' !_:<isVar>	{ return TInfix }
 	/ 'i' 'n' 'f' 'i' 'x' 'l' !_:<isVar>	{ return TInfixl }
 	/ 'i' 'n' 'f' 'i' 'x' 'r' !_:<isVar>	{ return TInfixr }
+	/ 'i' 'm' 'p' 'o' 'r' 't' !_:<isVar>	{ return TImport }
+	/ 'q' 'u' 'a' 'l' 'i' 'f' 'i' 'e' 'd' !_:<isVar>
+						{ return TQualified }
+	/ 'a' 's' !_:<isVar>			{ return TAs }
+	/ 'h' 'i' 'd' 'i' 'n' 'g' !_:<isVar>	{ return THiding }
+	/ 'm' 'o' 'd' 'u' 'l' 'e' !_:<isVar>	{ return TModule }
+	/ '{' '-' '#'				{ return TOPragma }
+	/ '#' '-' '}'				{ return TCPragma }
 	/ '('					{ return TOParen }
 	/ ')'					{ return TCParen }
 	/ '{'					{ return TOBrace }
@@ -496,8 +611,8 @@ tkn :: Tkn
 							(++ ".") qs ++ v }
 	/ qs:(q:con '.' { return q })* t:con	{ return $ TCon $ concatMap
 							(++ ".") qs ++ t }
-	/ ':' o:<isOp>+				{ return $ TOpCon $ ':' : o }
-	/ o:<isOp>+				{ return $ TOp o }
+	/ ':' o:<isOp>*				{ return $ TOpCon $ ':' : o }
+	/ !_:('-' '-' !_:<isOp>) o:<isOp>+	{ return $ TOp o }
 	/ ';'					{ return $ TSemicolon }
 
 var :: String = h:<isLower_> t:<isVar>*		{ return $ h : t }
@@ -524,5 +639,11 @@ escChar :: Char
 space	= _:<(`elem` " \t")>
 	/ _:('\n')[ gets $ null . fst ]
 	/ '\n'+ _:<(`elem` " \t")>* &(!(_, x)):lxp[gets $ (x >) . head . fst ]
+	/ '-' '-' _:<(/= '\n')>* '\n'
+	/ _:comment
+
+comment = '{' '-' !'#' _:comStr _:(_:comment _:comStr)* '-' '}'
+comStr	= !_:('{' '-') !_:('-' '}') _ _:comStr
+	/
 
 |]

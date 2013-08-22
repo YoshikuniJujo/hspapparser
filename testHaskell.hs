@@ -21,7 +21,10 @@ yy = [haskell|
 
 let	x = 5
         y = 10
+-- hage
 in x + y
+
+-- hoge
 
 |]
 
@@ -116,6 +119,8 @@ newtype Hoge = Hoge Int deriving (Show, Eq)
 
 type Hage = Hoge
 
+-- line comment
+
 class SomeClass a where
 	type SomeType a
 	data SomeData a
@@ -124,12 +129,18 @@ class SomeClass a where
 
 instance SomeClass Other where
 
+{- comment {- nested comment -} {- nested comment -} nested-}
+
 instance SomeClass Hoge where
 	type SomeType Hoge = Int
 	data SomeData Hoge = Hogeru
 	hoge = id
 	hage = Hoge 3
 
+-- line comment
+
 instance SomeClass Some where
+
+-- line comment
 
 |]
