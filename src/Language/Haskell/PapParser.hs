@@ -13,6 +13,7 @@ import "monads-tf" Control.Monad.Error
 
 import Data.Char
 import Data.Maybe
+import Data.List
 import Control.Applicative
 import Control.Arrow
 
@@ -107,6 +108,17 @@ data Tkn
 	| TSemicolon
 	deriving Show
 
+putForall :: Type -> Type
+putForall t = case typeVars t of
+	[] -> t
+	vs -> ForallT (map PlainTV vs) [] t
+
+typeVars :: Type -> [Name]
+typeVars (ForallT tvb _ t) = typeVars t \\ map (\(PlainTV v) -> v) tvb
+typeVars (AppT t1 t2) = typeVars t1 `union` typeVars t2
+typeVars (VarT v) = [v]
+typeVars _ = []
+
 [papillon|
 
 monad: ParseM
@@ -124,7 +136,7 @@ operator :: Exp = (TOp o):lx			{ return $ VarE $ mkName o }
 
 expApp :: Exp = f:expSig as:expSig*		{ return $ foldl AppE f as }
 
-expSig :: Exp = e:expRec mt:(TTypeDef:lx t:typ { return t })?
+expSig :: Exp = e:expRec mt:(TTypeDef:lx t:typ { return $ putForall t })?
 						{ return $ maybe e (SigE e) mt }
 
 expRec :: Exp = e:exp1 mfes:(TOBrace:lx fes:fieldExps TCBrace:lx { return fes })?
@@ -201,7 +213,7 @@ pat1 :: Pat
 		TCBracket:lx			{ return $ ListP $ fromMaybe [] mps }
 	/ TOParen:lx p:pat TCParen:lx		{ return p }
 
-typA :: Type = p:typ _:space* !_		{ return p }
+typA :: Type = t:typ _:space* !_		{ return $ putForall t }
 
 typ :: Type = t:typInf				{ return t }
 
