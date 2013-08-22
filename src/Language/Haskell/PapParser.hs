@@ -17,13 +17,22 @@ import Data.List
 import Control.Applicative
 import Control.Arrow
 
-type ParseM = State [Int]
+data DecEnv = Normal | Class | Instance deriving (Eq, Show)
+
+type ParseM = State ([Int], DecEnv)
+initStat = ([], Normal)
 
 pushX :: Int -> ParseM Bool
-pushX x = modify (x :) >> return True
+pushX x = modify (first (x :)) >> return True
 
 popX :: ParseM Bool
-popX = modify tail >> return True
+popX = modify (first tail) >> return True
+
+setEnv :: DecEnv -> ParseM Bool
+setEnv e = modify (second $ const e) >> return True
+
+getEnv :: ParseM DecEnv
+getEnv = gets snd
 
 haskell :: QuasiQuoter
 haskell = QuasiQuoter {
@@ -34,32 +43,32 @@ haskell = QuasiQuoter {
  }
 
 haskellExp :: String -> Exp
-haskellExp src = case flip evalState [] $ runErrorT $ expA $ parse src of
+haskellExp src = case flip evalState initStat $ runErrorT $ expA $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
 haskellPat :: String -> Pat
-haskellPat src = case flip evalState [] $ runErrorT $ patA $ parse src of
+haskellPat src = case flip evalState initStat $ runErrorT $ patA $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
 haskellTyp :: String -> Type
-haskellTyp src = case flip evalState [] $ runErrorT $ typA $ parse src of
+haskellTyp src = case flip evalState initStat $ runErrorT $ typA $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
 haskellDec :: String -> [Dec]
-haskellDec src = case flip evalState [1] $ runErrorT $ decsA $ parse src of
+haskellDec src = case flip evalState ([1], Normal) $ runErrorT $ decsA $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
 testTkn :: String -> Tkn
-testTkn src = case flip evalState [] $ runErrorT $ tkn $ parse src of
+testTkn src = case flip evalState initStat $ runErrorT $ tkn $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
 testLit :: String -> Lit
-testLit src = case flip evalState [] $ runErrorT $ lit $ parse src of
+testLit src = case flip evalState initStat $ runErrorT $ lit $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
@@ -278,14 +287,14 @@ decsA :: [Dec] = ds:decs _:space* !_		{ return ds }
 
 decs' :: [Dec]
 	= TOBrace:lx ds:decs TCBrace:lx		{ return ds }
-	/ &_:('\n'* (!(_, x)):lxp[gets $ maybe False (x <=) . listToMaybe])
+	/ &_:('\n'* (!(_, x)):lxp[gets $ maybe False (x <=) . listToMaybe . fst])
 						{ return [] }
 	/ &_:('\n'* !_:lx)			{ return [] }
 	/ &(!(_, x)):lxp[pushX x] ds:decs[popX]	{ return ds }
 
 decs :: [Dec]
 	= md:dec? TSemicolon:lx ds:decs		{ return $ maybe ds (: ds) md }
-	/ md:dec? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head] ds:decs
+	/ md:dec? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst] ds:decs
 						{ return $ maybe ds (: ds) md }
 	/ md:dec? '\n'+ !_			{ return $ maybeToList md }
 	/ md:dec?				{ return $ maybeToList md }
@@ -294,11 +303,28 @@ dec :: Dec
 	= p:pat TEq:lx b:body w:whr?		{ return $ ValD p b $
 							fromMaybe [] w }
 	/ (TVar v0):lx c0:cls
-		mcs:(_:(TSemicolon:lx / '\n'+ &(!(_, x)):lxp[gets $ (== x) . head])+
+		mcs:(_:(TSemicolon:lx / '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst])+
 		(TVar v):lx[return $ v == v0] c:cls { return c })*
 						{ return $ FunD (mkName v0) $
 							c0 : mcs }
-	/ TData:lx mc:(c:cxt TDRightArrow:lx { return c })?
+	/ ff:(TData:lx { return DataFam } / TType:lx { return TypeFam })
+		[(== Class) <$> getEnv]
+		(TCon c):lx vs:((TVar v):lx { return $ mkName v })*
+						{ return $ FamilyD ff
+							(mkName c)
+							(map PlainTV vs)
+							Nothing }
+	/ TData:lx[(== Instance) <$> getEnv]
+		mc:(c:cxt TDRightArrow:lx { return c })?
+		(TCon c):lx ts:(t:typ { return t })*
+		TEq:lx c0:cons cs:(TVBar:lx c:cons { return c })* md:drvng?
+						{ return $ DataInstD
+							(fromMaybe [] mc)
+							(mkName c) ts
+							(c0 : cs)
+							(fromMaybe [] md) }
+	/ TData:lx
+		mc:(c:cxt TDRightArrow:lx { return c })?
 		(TCon c):lx vs:((TVar v):lx { return $ mkName v })*
 		TEq:lx c0:cons cs:(TVBar:lx c:cons { return c })* md:drvng?
 						{ return $ DataD
@@ -307,7 +333,15 @@ dec :: Dec
 							(map PlainTV vs)
 							(c0 : cs)
 							(fromMaybe [] md) }
-	/ TNewtype:lx mc:(c:cxt TDRightArrow:lx { return c })?
+	/ TNewtype:lx[(== Instance) <$> getEnv]
+		mc:(c:cxt TDRightArrow:lx { return c })?
+		(TCon c):lx ts:(t:typ { return t })*
+		TEq:lx cn:cons md:drvng?	{ return $ NewtypeInstD
+							(fromMaybe [] mc)
+							(mkName c) ts cn
+							(fromMaybe [] md) }
+	/ TNewtype:lx
+		mc:(c:cxt TDRightArrow:lx { return c })?
 		(TCon c):lx vs:((TVar v):lx { return $ mkName v })*
 		TEq:lx cn:cons md:drvng?	{ return $ NewtypeD
 							(fromMaybe [] mc)
@@ -315,19 +349,26 @@ dec :: Dec
 							(map PlainTV vs)
 							cn
 							(fromMaybe [] md) }
-	/ TType:lx (TCon c):lx vs:((TVar v):lx { return $ mkName v })*
+	/ TType:lx[(== Instance) <$> getEnv]
+		(TCon c):lx ts:(t:typ { return t })*
+		TEq:lx t:typ			{ return $ TySynInstD
+							(mkName c) ts t }
+	/ TType:lx
+		(TCon c):lx vs:((TVar v):lx { return $ mkName v })*
 		TEq:lx t:typ			{ return $ TySynD
 							(mkName c)
 							(map PlainTV vs)
 							t }
 	/ TClass:lx mc:(c:cxt TDRightArrow:lx { return c })?
 		(TCon c):lx vs:((TVar v):lx { return $ mkName v })*
-		TWhere:lx ds:decs'		{ return $ ClassD
+		TWhere:lx[setEnv Class] ds:decs'[setEnv Normal]
+						{ return $ ClassD
 							(fromMaybe [] mc)
 							(mkName c)
 							(map PlainTV vs) [] ds }
 	/ TInstance:lx mc:(c:cxt TDRightArrow:lx { return c })?
-		t:typ TWhere:lx ds:decs'	{ return $ InstanceD
+		t:typ TWhere:lx[setEnv Instance] ds:decs'[setEnv Normal]
+						{ return $ InstanceD
 							(fromMaybe [] mc)
 							t ds }
 	/ (TVar v):lx TTypeDef:lx t:typ		{ return $ SigD (mkName v) t }
@@ -374,7 +415,7 @@ whr :: [Dec]
 
 matches :: [Match]
 	= mm:match? TSemicolon:lx ms:matches	{ return $ maybe ms (: ms) mm }
-	/ mm:match? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head] ms:matches
+	/ mm:match? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst] ms:matches
 						{ return $ maybe ms (: ms) mm }
 	/ mm:match?				{ return $ maybeToList mm }
 
@@ -384,7 +425,7 @@ match :: Match
 
 stmts :: [Stmt]
 	= ms:stmt? TSemicolon:lx ss:stmts	{ return $ maybe ss (: ss) ms }
-	/ ms:stmt? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head] ss:stmts
+	/ ms:stmt? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst] ss:stmts
 						{ return $ maybe ss (: ss) ms }
 	/ ms:stmt?				{ return $ maybeToList ms }
 
@@ -481,7 +522,7 @@ escChar :: Char
 	/ 't'					{ return '\t' }
 
 space	= _:<(`elem` " \t")>
-	/ _:('\n')[ gets null ]
-	/ '\n'+ _:<(`elem` " \t")>* &(!(_, x)):lxp[gets $ (x >) . head ]
+	/ _:('\n')[ gets $ null . fst ]
+	/ '\n'+ _:<(`elem` " \t")>* &(!(_, x)):lxp[gets $ (x >) . head . fst ]
 
 |]

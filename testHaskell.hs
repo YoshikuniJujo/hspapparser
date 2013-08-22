@@ -1,4 +1,4 @@
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE QuasiQuotes, TypeFamilies #-}
 
 import Language.Haskell.PapParser
 
@@ -117,12 +117,16 @@ newtype Hoge = Hoge Int deriving (Show, Eq)
 type Hage = Hoge
 
 class SomeClass a where
+	type SomeType a
+	data SomeData a
 	hoge :: a -> a
 	hage :: a
 
 instance SomeClass Other where
 
 instance SomeClass Hoge where
+	type SomeType Hoge = Int
+	data SomeData Hoge = Hogeru
 	hoge = id
 	hage = Hoge 3
 
