@@ -6,7 +6,7 @@ module Language.Haskell.PapParser (
 
 import Prelude hiding (exp, pred)
 import Text.Papillon
-import Language.Haskell.TH hiding (match, cxt)
+import Language.Haskell.TH hiding (match, cxt, strictType)
 import Language.Haskell.TH.Quote
 import "monads-tf" Control.Monad.State
 import "monads-tf" Control.Monad.Error
@@ -106,6 +106,8 @@ data Tkn
 	| TOf
 	| TDo
 	| TWhere
+	| TData
+	| TDeriving
 	| TSemicolon
 	deriving Show
 
@@ -285,6 +287,29 @@ dec :: Dec
 		(TVar v):lx[return $ v == v0] c:cls { return c })*
 						{ return $ FunD (mkName v0) $
 							c0 : mcs }
+	/ TData:lx mc:(c:cxt TDRightArrow:lx { return c })?
+		(TCon c):lx vs:((TVar v):lx { return $ mkName v })*
+		TEq:lx c0:cons cs:(TVBar:lx c:cons { return c })* md:drvng?
+						{ return $ DataD
+							(fromMaybe [] mc)
+							(mkName c)
+							(map PlainTV vs)
+							(c0 : cs)
+							(fromMaybe [] md) }
+
+cons :: Con
+	= (TCon c):lx ts:(t:strictType { return t })*
+						{ return $ NormalC (mkName c) ts }
+
+strictType :: (Strict, Type)
+	= (TOp "!"):lx t:typ			{ return (IsStrict, t) }
+	/ t:typ					{ return (NotStrict, t) }
+
+drvng :: [Name]
+	= TDeriving:lx (TCon c):lx		{ return [mkName c] }
+	/ TDeriving:lx TOParen:lx (TCon c0):lx
+		cs:(TComma:lx (TCon c):lx { return $ mkName c })* TCParen:lx
+						{ return $ mkName c0 : cs }
 
 cls :: Clause
 	= ps:pat1+ TEq:lx b:body w:whr?		{ return $ Clause ps b $
@@ -354,6 +379,9 @@ tkn :: Tkn
 	/ 'o' 'f' !_:<isVar>			{ return TOf }
 	/ 'd' 'o' !_:<isVar>			{ return TDo }
 	/ 'w' 'h' 'e' 'r' 'e' !_:<isVar>	{ return TWhere }
+	/ 'd' 'a' 't' 'a' !_:<isVar>		{ return TData }
+	/ 'd' 'e' 'r' 'i' 'v' 'i' 'n' 'g' !_:<isVar>
+						{ return TDeriving }
 	/ '('					{ return TOParen }
 	/ ')'					{ return TCParen }
 	/ '{'					{ return TOBrace }

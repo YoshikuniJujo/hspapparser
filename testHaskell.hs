@@ -74,4 +74,6 @@ someFun 3 = 8;
 someFun 9 = 77
 otherFun 8 = 7
 
+data Other = Other Other | Null deriving Show
+
 |]
