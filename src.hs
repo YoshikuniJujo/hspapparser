@@ -12,4 +12,5 @@ import qualified Hoge.Hage as HH hiding (what, happend)
 main :: IO ()
 main = do
 	x : _ <- getArgs
-	print 8
+	print $ 8
+--	print $ 8 `div` 9

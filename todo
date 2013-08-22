@@ -1,5 +1,13 @@
+* haskellSrc の逆関数を作ろう
+	ppr を使えば簡単にできそうに思う
+
 * Fuga.Hoge.Piyo や Fuga.Hoge.piyo を
 	["Fuga", "Hoge"] "Piyo", ["Fuga", "Hoge"] "piyo" のように格納しようかな
+
+* [x | x <- [1, 2, 3]] のような形を実装する
+	ついでに pattern guard も。view pattern については考える
+
+* x `div` y も今は無かったかな?
 
 * type families について
 
