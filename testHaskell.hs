@@ -2,10 +2,10 @@
 
 import Language.Haskell.PapParser
 
-x :: [haskell| forall a . (->) a a |]
+x :: [haskell| forall a . Num a => (->) a a |]
 x = undefined
 
-xx :: [haskell| a -> a |]
+xx :: [haskell| (Num a, Eq a) => a -> a |]
 xx = id
 
 y :: [haskell| (Int, Int) |]

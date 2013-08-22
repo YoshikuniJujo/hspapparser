@@ -4,9 +4,9 @@ module Language.Haskell.PapParser (
 	haskell
 ) where
 
-import Prelude hiding (exp)
+import Prelude hiding (exp, pred)
 import Text.Papillon
-import Language.Haskell.TH hiding (match)
+import Language.Haskell.TH hiding (match, cxt)
 import Language.Haskell.TH.Quote
 import "monads-tf" Control.Monad.State
 import "monads-tf" Control.Monad.Error
@@ -92,6 +92,7 @@ data Tkn
 	| TTypeDef
 	| TRightArrow
 	| TLeftArrow
+	| TDRightArrow
 	| TDotDot
 	| TForall
 	| TBackslash
@@ -118,6 +119,13 @@ typeVars (ForallT tvb _ t) = typeVars t \\ map (\(PlainTV v) -> v) tvb
 typeVars (AppT t1 t2) = typeVars t1 `union` typeVars t2
 typeVars (VarT v) = [v]
 typeVars _ = []
+
+cxtToTVBs :: Cxt -> [TyVarBndr]
+cxtToTVBs = map PlainTV . foldr1 union . map predVars
+
+predVars :: Pred -> [Name]
+predVars (ClassP _ ts) = foldr1 union $ map typeVars ts
+predVars (EqualP t1 t2) = typeVars t1 `union` typeVars t2
 
 [papillon|
 
@@ -215,7 +223,13 @@ pat1 :: Pat
 
 typA :: Type = t:typ _:space* !_		{ return $ putForall t }
 
-typ :: Type = t:typInf				{ return t }
+typ :: Type = t:typCxt				{ return t }
+
+typCxt :: Type
+	= mc:(c:cxt TDRightArrow:lx { return c })? t:typInf
+						{ return $ maybe t (\c ->
+							ForallT (cxtToTVBs c) c t)
+							mc }
 
 typInf :: Type
 	= t0:typApp ts:(TRightArrow:lx t:typApp { return t })*
@@ -227,8 +241,10 @@ typApp :: Type
 	= t:typ1 ts:typ1*			{ return $ foldl AppT t ts }
 
 typ1 :: Type
-	= TForall:lx tvs:tyVarBndr+ (TOp "."):lx t:typ
-						{ return $ ForallT tvs [] t }
+	= TForall:lx tvs:tyVarBndr+ (TOp "."):lx
+		mc:(c:cxt TDRightArrow:lx { return c })? t:typ
+						{ return $ ForallT tvs
+							(fromMaybe [] mc) t }
 	/ (TVar v):lx				{ return $ VarT $ mkName v }
 	/ (TCon c):lx				{ return $ ConT $ mkName c }
 	/ TOParen:lx TCParen:lx			{ return $ TupleT 0 }
@@ -240,12 +256,17 @@ typ1 :: Type
 typTup :: [Type] = t0:typ ts:(TComma:lx t:typ { return t })*
 						{ return $ t0 : ts }
 
+cxt :: [Pred]
+	= p:pred				{ return [p] }
+	/ TOParen:lx p0:pred ps:(TComma:lx p:pred { return p })* TCParen:lx
+						{ return $ p0 : ps }
+
 pred :: Pred
-	= (TCon c):lx t:typ1			{ return $ ClassP (mkName c) [t] }
-	/ (TCon c):lx TOParen:lx t0:typ ts:(TComma:lx t:typ { return t })* TOParen:lx
-						{ return $ ClassP (mkName c) $
+	= (TCon c):lx t:typ			{ return $ ClassP (mkName c) [t] }
+	/ (TCon c):lx TOParen:lx t0:typ ts:(TComma:lx t:typ { return t })*
+		TOParen:lx			{ return $ ClassP (mkName c) $
 							t0 : ts }
---	/ 
+	/ t1:typInf TTilde:lx t2:typInf		{ return $ EqualP t1 t2 }
 
 decsA :: [Dec] = ds:decs _:space* !_		{ return ds }
 
@@ -348,6 +369,7 @@ tkn :: Tkn
 	/ ':' ':' !_:<isOp>			{ return TTypeDef }
 	/ '-' '>' !_:<isOp>			{ return TRightArrow }
 	/ '<' '-' !_:<isOp>			{ return TLeftArrow }
+	/ '=' '>' !_:<isOp>			{ return TDRightArrow }
 	/ '.' '.' !_:<isOp>			{ return TDotDot }
 	/ l:lit					{ return $ TLit l }
 	/ qs:(q:con '.' { return q })* v:var	{ return $ TVar $ concatMap
