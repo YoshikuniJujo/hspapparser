@@ -211,7 +211,8 @@ pragmaStr :: String
 	/					{ return "" }
 
 languagePragma :: Pragma
-	= TOPragma:lx (TCon c0):lx cs:(TComma:lx (TCon c):lx { return c })*
+	= TOPragma:lx (TCon "LANGUAGE"):lx
+		(TCon c0):lx cs:(TComma:lx (TCon c):lx { return c })*
 		TCPragma:lx			{ return $ LanguagePragma $ c0 : cs }
 
 mdl :: Module
@@ -234,8 +235,11 @@ imprt :: Import
 							mod masn (isJust mh) mes }
 
 exports :: [Export]
-	= TOParen:lx e0:export es:(TComma:lx e:export { return e })* TCParen:lx
-						{ return $ e0 : es }
+	= TOParen:lx
+		mes:(e0:export es:(TComma:lx e:export { return e })*
+			{ return $ e0 : es })?
+		TCParen:lx
+						{ return $ fromMaybe [] mes }
 
 export :: Export
 	= (TVar v):lx				{ return $ EMem $ MVar v }

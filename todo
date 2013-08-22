@@ -1,6 +1,5 @@
-* import や module 文を parse しよう。
-	全体のパーサを作る。
-	まずは data type を決めよう。
+* Fuga.Hoge.Piyo や Fuga.Hoge.piyo を
+	["Fuga", "Hoge"] "Piyo", ["Fuga", "Hoge"] "piyo" のように格納しようかな
 
 * type families について
 
