@@ -1,0 +1,3 @@
+infix 3 ++, *, -, /, `hoge`
+infixl
+infixr
