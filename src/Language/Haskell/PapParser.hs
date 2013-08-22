@@ -107,7 +107,11 @@ data Tkn
 	| TDo
 	| TWhere
 	| TData
+	| TNewtype
+	| TType
 	| TDeriving
+	| TClass
+	| TInstance
 	| TSemicolon
 	deriving Show
 
@@ -169,10 +173,7 @@ exp1 :: Exp
 						{ return $ LamE ps e }
 	/ TIf:lx p:exp TThen:lx t:exp TElse:lx e:exp
 						{ return $ CondE p t e }
-	/ TLet:lx TOBrace:lx ds:decs TCBrace:lx TIn:lx e:exp
-						{ return $ LetE ds e }
-	/ TLet:lx &(!(_, x)):lxp[pushX x] ds:decs TIn:lx[popX] e:exp
-						{ return $ LetE ds e }
+	/ TLet:lx ds:decs' TIn:lx e:exp		{ return $ LetE ds e }
 	/ TCase:lx e:exp TOf:lx TOBrace:lx ms:matches TCBrace:lx
 						{ return $ CaseE e ms }
 	/ TCase:lx e:exp TOf:lx &(!(_, x)):lxp[pushX x] ms:matches[popX]
@@ -272,6 +273,13 @@ pred :: Pred
 
 decsA :: [Dec] = ds:decs _:space* !_		{ return ds }
 
+decs' :: [Dec]
+	= TOBrace:lx ds:decs TCBrace:lx		{ return ds }
+	/ &_:('\n'* (!(_, x)):lxp[gets $ maybe False (x <=) . listToMaybe])
+						{ return [] }
+	/ &_:('\n'* !_:lx)			{ return [] }
+	/ &(!(_, x)):lxp[pushX x] ds:decs[popX]	{ return ds }
+
 decs :: [Dec]
 	= md:dec? TSemicolon:lx ds:decs		{ return $ maybe ds (: ds) md }
 	/ md:dec? '\n'+ &(!(_, x)):lxp[gets $ (== x) . head] ds:decs
@@ -296,6 +304,30 @@ dec :: Dec
 							(map PlainTV vs)
 							(c0 : cs)
 							(fromMaybe [] md) }
+	/ TNewtype:lx mc:(c:cxt TDRightArrow:lx { return c })?
+		(TCon c):lx vs:((TVar v):lx { return $ mkName v })*
+		TEq:lx cn:cons md:drvng?	{ return $ NewtypeD
+							(fromMaybe [] mc)
+							(mkName c)
+							(map PlainTV vs)
+							cn
+							(fromMaybe [] md) }
+	/ TType:lx (TCon c):lx vs:((TVar v):lx { return $ mkName v })*
+		TEq:lx t:typ			{ return $ TySynD
+							(mkName c)
+							(map PlainTV vs)
+							t }
+	/ TClass:lx mc:(c:cxt TDRightArrow:lx { return c })?
+		(TCon c):lx vs:((TVar v):lx { return $ mkName v })*
+		TWhere:lx ds:decs'		{ return $ ClassD
+							(fromMaybe [] mc)
+							(mkName c)
+							(map PlainTV vs) [] ds }
+	/ TInstance:lx mc:(c:cxt TDRightArrow:lx { return c })?
+		t:typ TWhere:lx ds:decs'	{ return $ InstanceD
+							(fromMaybe [] mc)
+							t ds }
+	/ (TVar v):lx TTypeDef:lx t:typ		{ return $ SigD (mkName v) t }
 
 cons :: Con
 	= (TCon c):lx ts:(t:strictType { return t })*
@@ -380,8 +412,13 @@ tkn :: Tkn
 	/ 'd' 'o' !_:<isVar>			{ return TDo }
 	/ 'w' 'h' 'e' 'r' 'e' !_:<isVar>	{ return TWhere }
 	/ 'd' 'a' 't' 'a' !_:<isVar>		{ return TData }
+	/ 'n' 'e' 'w' 't' 'y' 'p' 'e' !_:<isVar>{ return TNewtype }
+	/ 't' 'y' 'p' 'e'			{ return TType }
 	/ 'd' 'e' 'r' 'i' 'v' 'i' 'n' 'g' !_:<isVar>
 						{ return TDeriving }
+	/ 'c' 'l' 'a' 's' 's' !_:<isVar>	{ return TClass }
+	/ 'i' 'n' 's' 't' 'a' 'n' 'c' 'e' !_:<isVar>
+						{ return TInstance }
 	/ '('					{ return TOParen }
 	/ ')'					{ return TCParen }
 	/ '{'					{ return TOBrace }

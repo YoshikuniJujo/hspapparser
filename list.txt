@@ -1,0 +1,3 @@
+Con: RecC, InfixC, ForallC
+Dec: FamilyD, DataInstD, NewTypeInstD, TySynInstD, PragmaD, ForeignD
+	FunDep

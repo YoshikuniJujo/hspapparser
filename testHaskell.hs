@@ -16,6 +16,42 @@ let	x = 3
 
 |]
 
+yy :: Int
+yy = [haskell|
+
+let	x = 5
+        y = 10
+in x + y
+
+|]
+
+yyy :: Int
+yyy = [haskell|
+
+let	x = 5
+        y = 10
+                    in x + y
+
+|]
+
+yyyy :: Int
+yyyy = [haskell|
+
+let
+x = 8
+y = 9
+in x + y
+
+|]
+
+yyyyy :: Int
+yyyyy = [haskell|
+
+let
+in 888
+
+|]
+
 times :: Int -> IO () -> IO ()
 times 0 _ = return ()
 times n act = act >> times (n - 1) act
@@ -75,5 +111,21 @@ someFun 9 = 77
 otherFun 8 = 7
 
 data Other = Other Other | Null deriving Show
+
+newtype Hoge = Hoge Int deriving (Show, Eq)
+
+type Hage = Hoge
+
+class SomeClass a where
+	hoge :: a -> a
+	hage :: a
+
+instance SomeClass Other where
+
+instance SomeClass Hoge where
+	hoge = id
+	hage = Hoge 3
+
+instance SomeClass Some where
 
 |]
