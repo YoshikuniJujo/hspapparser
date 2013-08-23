@@ -195,6 +195,16 @@ predVars :: Pred -> [Name]
 predVars (ClassP _ ts) = foldr1 union $ map typeVars ts
 predVars (EqualP t1 t2) = typeVars t1 `union` typeVars t2
 
+mkTupSec :: [Maybe Exp] -> Exp
+mkTupSec ms = LamE ps $ TupE $ mkEs vs ms
+	where
+	vs = map (mkName . ('_' :) . show) $
+		take (length $ filter isNothing ms) [0 .. ]
+	ps = map VarP vs
+	mkEs [] [] = []
+	mkEs vs (Just e : es) = e : mkEs vs es
+	mkEs (v : vs) (Nothing : es) = VarE v : mkEs vs es
+
 [papillon|
 
 monad: ParseM
@@ -291,13 +301,15 @@ exp1 :: Exp
 	/ (TCon c):lx				{ return $ ConE $ mkName c }
 	/ (TLit l):lx				{ return $ LitE l }
 	/ !_:(TOParen:lx !_:expApp TCParen:lx)
-		TOParen:lx l:exp? (TOp o):lx r:exp? TCParen:lx
+		TOParen:lx l:exp?
+		oo:((TOp o):lx { return o } / (TOpCon o): lx { return o })
+		r:exp? TCParen:lx
 						{ return $ InfixE l
-							(VarE $ mkName o) r }
+							(VarE $ mkName oo) r }
 	/ TOParen:lx TCParen:lx			{ return $ TupE [] }
 	/ TOParen:lx e:exp TCParen:lx		{ return e }
-	/ TOParen:lx e0:exp es:(TComma:lx e:exp { return e })+ TCParen:lx
-						{ return $ TupE $ e0 : es }
+	/ TOParen:lx me0:exp? mes:(TComma:lx me:exp? { return me })+ TCParen:lx
+						{ return $ mkTupSec $ me0 : mes }
 	/ TBackslash:lx ps:pat1+ TRightArrow:lx e:exp
 						{ return $ LamE ps e }
 	/ TIf:lx p:exp TThen:lx t:exp TElse:lx e:exp

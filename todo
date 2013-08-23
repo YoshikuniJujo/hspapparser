@@ -1,23 +1,11 @@
-* tuple section
-	まずは (,) や (,,,) 等を作る
-	次に (3 ,) や (4 ,) 等を作り、さらには
-	(3, , 4, , 5) 1 2 のような形も読み込めるようにする
-
-	これをやるには、[Maybe Exp] を取り、その穴を変数で埋める必要がある。
-	しかし、今、全体の形を ExpQ 等では無く Exp 等でやっているので、
-	newName が使えないという問題がある。
-	newName が使えたとしても、そのままでは warning が出てしまうのではあるが。
-
-	まあ、_1, _2 のような変数を使えばいいかな。
+* [x | x <- [1, 2, 3]] のような形を実装する
+	ついでに pattern guard も。view pattern については考える
 
 * haskellSrc の逆関数を作ろう
 	ppr を使えば簡単にできそうに思う
 
 * Fuga.Hoge.Piyo や Fuga.Hoge.piyo を
 	["Fuga", "Hoge"] "Piyo", ["Fuga", "Hoge"] "piyo" のように格納しようかな
-
-* [x | x <- [1, 2, 3]] のような形を実装する
-	ついでに pattern guard も。view pattern については考える
 
 * x `div` y も今は無かったかな?
 

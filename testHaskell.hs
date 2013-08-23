@@ -102,10 +102,10 @@ v { other = "eight" }
 
 |]
 
-q :: (Int, Int, Int)
+q :: (Int, Int, Int, Int)
 q = [haskell|
 
-(,) 3 4 5
+(2, , , 5) 3 4
 
 |]
 
