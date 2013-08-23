@@ -1,3 +1,11 @@
+* infix について
+	infix 3 ++, *, -, /, `hoge`
+	infixl
+	infixr
+	今のバージョンでは無いので、どうしようかな?
+	ghc を update したいが、今ここでするのは不安要素が多い。
+	新しい Gentoo を vm 上に構築しようかな。
+
 * [x | x <- [1, 2, 3]] のような形を実装する
 	ついでに pattern guard も。view pattern については考える
 
@@ -10,9 +18,3 @@
 * x `div` y も今は無かったかな?
 
 * type families について
-
-* infix について
-	infix 3 ++, *, -, /, `hoge`
-	infixl
-	infixr
-	今のバージョンでは無い
