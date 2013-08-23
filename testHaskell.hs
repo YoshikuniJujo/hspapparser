@@ -102,6 +102,13 @@ v { other = "eight" }
 
 |]
 
+q :: (Int, Int, Int)
+q = [haskell|
+
+(,) 3 4 5
+
+|]
+
 [haskell|
 
 t = t' where t' = t''

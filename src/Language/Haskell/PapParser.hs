@@ -272,6 +272,7 @@ expInfix :: Exp =
 
 operator :: String
 	= (TOp o):lx				{ return o }
+	/ (TOpCon o):lx				{ return o }
 	/ TBackquote:lx (TVar v):lx TBackquote:lx
 						{ return v }
 
@@ -409,25 +410,35 @@ decs' :: [Dec]
 	/ &(!(_, x)):lxp[pushX x] ds:decs[popX]	{ return ds }
 
 decs :: [Dec]
-	= md:dec? TSemicolon:lx ds:decs		{ return $ maybe ds (: ds) md }
-	/ md:dec? _:(_:space / '\n')+ &(!(_, x)):lxp[gets $ (== x) . head . fst] ds:decs
+	= ds:decs_				{ return $ concat ds }
+
+decs_ :: [[Dec]]
+	= md:dec? TSemicolon:lx ds:decs_	{ return $ maybe ds (: ds) md }
+	/ md:dec? _:(_:space / '\n')+ &(!(_, x)):lxp[gets $ (== x) . head . fst]
+		ds:decs_
 						{ return $ maybe ds (: ds) md }
 	/ md:dec? _:(_:space / '\n')+ !_	{ return $ maybeToList md }
 	/ md:dec?				{ return $ maybeToList md }
 	/ !_:lx					{ return [] }
 
-dec :: Dec
-	= p:pat TEq:lx b:body w:whr?		{ return $ ValD p b $
+dec :: [Dec]
+	= d:dec1				{ return [d] }
+	/ (TVar v0):lx vs:(TComma:lx (TVar v):lx { return v })* TTypeDef:lx t:typ		
+						{ return $ map (flip SigD t .
+							mkName) $ v0 : vs }
+
+dec1 :: Dec
+	= p:pat b:body w:whr?			{ return $ ValD p b $
 							fromMaybe [] w }
 	/ (TVar v0):lx c0:cls
 		mcs:(_:(TSemicolon:lx / '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst])+
 			(TVar v):lx[return $ v == v0] c:cls { return c })*
 						{ return $ FunD (mkName v0) $
 							c0 : mcs }
-	/ l0:pat o0:operator r0:pat TEq:lx b0:body w0:whr?
+	/ l0:pat o0:operator r0:pat b0:body w0:whr?
 		mcs:(_:(TSemicolon:lx / '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst])+
 			l:pat o:operator[return $ o == o0] r:pat
-			TEq:lx b:body w:whr? { return $ Clause [l, r] b $
+			b:body w:whr? { return $ Clause [l, r] b $
 				fromMaybe [] w })*
 		{ return $ FunD (mkName o0) $ Clause [l0, r0] b0 (fromMaybe [] w0) :
 			mcs }
@@ -496,7 +507,6 @@ dec :: Dec
 						{ return $ InstanceD
 							(fromMaybe [] mc)
 							t ds }
-	/ (TVar v):lx TTypeDef:lx t:typ		{ return $ SigD (mkName v) t }
 
 {-
 infixd :: [Dec]
@@ -521,12 +531,17 @@ drvng :: [Name]
 						{ return $ mkName c0 : cs }
 
 cls :: Clause
-	= ps:pat1+ TEq:lx b:body w:whr?		{ return $ Clause ps b $
+	= ps:pat1+ b:body w:whr?		{ return $ Clause ps b $
 							fromMaybe [] w }
 
 body :: Body
-	= e:exp					{ return $ NormalB e }
+	= TEq:lx e:exp				{ return $ NormalB e }
 	/ gs:(TVBar:lx g:grd TEq:lx e:exp { return (g, e) })+
+						{ return $ GuardedB gs }
+
+body' :: Body
+	= TRightArrow:lx e:exp			{ return $ NormalB e }
+	/ gs:(TVBar:lx g:grd TRightArrow:lx e:exp { return (g, e) })+
 						{ return $ GuardedB gs }
 
 grd :: Guard
@@ -545,7 +560,7 @@ matches :: [Match]
 	/ mm:match?				{ return $ maybeToList mm }
 
 match :: Match
-	= p:pat TRightArrow:lx b:body w:whr?	{ return $ Match p b $
+	= p:pat b:body' w:whr?	{ return $ Match p b $
 							fromMaybe [] w }
 
 stmts :: [Stmt]
