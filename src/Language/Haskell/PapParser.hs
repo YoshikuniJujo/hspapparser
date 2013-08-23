@@ -140,6 +140,7 @@ data Tkn
 	| TTilde
 	| TAt
 	| TEq
+	| TBackquote
 	| TTypeDef
 	| TRightArrow
 	| TLeftArrow
@@ -201,6 +202,7 @@ monad: ParseM
 hssrc :: HsSrc
 	= ps:pragma* m:mdl &(!(_, x)):lxp[pushX x] is:imprts ds:decsA[popX]
 						{ return $ HsSrc ps m is ds }
+	/ ps:pragma* m:mdl _:space* !_		{ return $ HsSrc ps m [] [] }
 
 pragma :: Pragma
 	= p:languagePragma			{ return p }
@@ -267,7 +269,10 @@ expInfix :: Exp = lft:expApp ors:(o:operator r:expApp { return (o, r) })*
 							(\l (o, r) -> UInfixE l o r)
 							lft ors }
 
-operator :: Exp = (TOp o):lx			{ return $ VarE $ mkName o }
+operator :: Exp
+	= (TOp o):lx			{ return $ VarE $ mkName o }
+	/ TBackquote:lx (TVar v):lx TBackquote:lx
+					{ return $ VarE $ mkName v }
 
 expApp :: Exp = f:expSig as:expSig*		{ return $ foldl AppE f as }
 
@@ -407,6 +412,7 @@ decs :: [Dec]
 						{ return $ maybe ds (: ds) md }
 	/ md:dec? _:(_:space / '\n')+ !_	{ return $ maybeToList md }
 	/ md:dec?				{ return $ maybeToList md }
+	/ !_:lx					{ return [] }
 
 dec :: Dec
 	= p:pat TEq:lx b:body w:whr?		{ return $ ValD p b $
@@ -600,6 +606,7 @@ tkn :: Tkn
 	/ '['					{ return TOBracket }
 	/ ']'					{ return TCBracket }
 	/ ','					{ return TComma }
+	/ '`'					{ return TBackquote }
 	/ '~' !_:<isOp>				{ return TTilde }
 	/ '@' !_:<isOp>				{ return TAt }
 	/ '=' !_:<isOp>				{ return TEq }
