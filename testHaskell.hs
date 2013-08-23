@@ -113,6 +113,10 @@ someFun 3 = 8;
 someFun 9 = 77
 otherFun 8 = 7
 
+Just x `op` Just y = Just $ x * y
+Nothing `op` _ = Nothing
+x `hige` y = Nothing
+
 data Other = Other Other | Null deriving Show
 
 newtype Hoge = Hoge Int deriving (Show, Eq)

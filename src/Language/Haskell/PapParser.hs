@@ -264,15 +264,16 @@ expA :: Exp = e:exp _:space* !_			{ return e }
 
 exp :: Exp = e:expInfix				{ return e }
 
-expInfix :: Exp = lft:expApp ors:(o:operator r:expApp { return (o, r) })*
+expInfix :: Exp =
+	lft:expApp ors:(o:operator r:expApp { return (VarE $ mkName o, r) })*
 						{ return $ foldl
 							(\l (o, r) -> UInfixE l o r)
 							lft ors }
 
-operator :: Exp
-	= (TOp o):lx			{ return $ VarE $ mkName o }
+operator :: String
+	= (TOp o):lx				{ return o }
 	/ TBackquote:lx (TVar v):lx TBackquote:lx
-					{ return $ VarE $ mkName v }
+						{ return v }
 
 expApp :: Exp = f:expSig as:expSig*		{ return $ foldl AppE f as }
 
@@ -289,8 +290,9 @@ exp1 :: Exp
 	/ (TCon c):lx				{ return $ ConE $ mkName c }
 	/ (TLit l):lx				{ return $ LitE l }
 	/ !_:(TOParen:lx !_:expApp TCParen:lx)
-		TOParen:lx l:exp? o:operator r:exp? TCParen:lx
-						{ return $ InfixE l o r }
+		TOParen:lx l:exp? (TOp o):lx r:exp? TCParen:lx
+						{ return $ InfixE l
+							(VarE $ mkName o) r }
 	/ TOParen:lx TCParen:lx			{ return $ TupE [] }
 	/ TOParen:lx e:exp TCParen:lx		{ return e }
 	/ TOParen:lx e0:exp es:(TComma:lx e:exp { return e })+ TCParen:lx
@@ -419,9 +421,17 @@ dec :: Dec
 							fromMaybe [] w }
 	/ (TVar v0):lx c0:cls
 		mcs:(_:(TSemicolon:lx / '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst])+
-		(TVar v):lx[return $ v == v0] c:cls { return c })*
+			(TVar v):lx[return $ v == v0] c:cls { return c })*
 						{ return $ FunD (mkName v0) $
 							c0 : mcs }
+	/ l0:pat o0:operator r0:pat TEq:lx b0:body w0:whr?
+		mcs:(_:(TSemicolon:lx / '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst])+
+			l:pat o:operator[return $ o == o0] r:pat
+			TEq:lx b:body w:whr? { return $ Clause [l, r] b $
+				fromMaybe [] w })*
+		{ return $ FunD (mkName o0) $ Clause [l0, r0] b0 (fromMaybe [] w0) :
+			mcs }
+		
 	/ ff:(TData:lx { return DataFam } / TType:lx { return TypeFam })
 		[(== Class) <$> getEnv]
 		(TCon c):lx vs:((TVar v):lx { return $ mkName v })*
