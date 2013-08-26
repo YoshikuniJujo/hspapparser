@@ -2,10 +2,11 @@
 
 module Language.Haskell.PapParser (
 	haskellSrc,
-	haskell
+	haskell,
+	ppr
 ) where
 
-import Prelude hiding (exp, pred)
+import Prelude hiding (exp, pred, mod)
 import Text.Papillon
 import Language.Haskell.TH hiding (match, cxt, strictType, Pragma)
 import Language.Haskell.TH.Quote
@@ -15,14 +16,15 @@ import "monads-tf" Control.Monad.Error
 import Data.Char
 import Data.Maybe
 import Data.List
-import Control.Applicative
 import Control.Arrow
 
-import qualified Language.Haskell.TH.PprLib as PP
+import Language.Haskell.HsSrc
 
 data DecEnv = Normal | Class | Instance deriving (Eq, Show)
 
 type ParseM = State ([Int], DecEnv)
+
+initStat :: ([Int], DecEnv)
 initStat = ([], Normal)
 
 pushX :: Int -> ParseM Bool
@@ -70,6 +72,7 @@ haskellDec src = case flip evalState ([1], Normal) $ runErrorT $ decsA $ parse s
 	Right (p, _) -> p
 	Left _ -> error "parse error"
 
+{-
 testTkn :: String -> Tkn
 testTkn src = case flip evalState initStat $ runErrorT $ tkn $ parse src of
 	Right (p, _) -> p
@@ -79,6 +82,7 @@ testLit :: String -> Lit
 testLit src = case flip evalState initStat $ runErrorT $ lit $ parse src of
 	Right (p, _) -> p
 	Left _ -> error "parse error"
+-}
 
 isLower_ :: Char -> Bool
 isLower_ = (||) <$> isLower <*> (`elem` "_")
@@ -88,47 +92,6 @@ isVar = (||) <$> isAlphaNum <*> (`elem` "'_")
 
 isOp :: Char -> Bool
 isOp = (`elem` "!#$%&*+./<=>?@\\^|-~:")
-
-data HsSrc = HsSrc {
-	srcPragmas :: [Pragma],
-	srcModule :: Module,
-	srcImports :: [Import],
-	srcDecs :: [Dec]
- } deriving Show
-
-data Pragma
-	= LanguagePragma [String]
-	| OtherPragma String
-	deriving Show
-
-instance Ppr Pragma where
-	ppr (LanguagePragma ps) = PP.text "{-#" PP.<+> PP.text "LANGUAGE" PP.<+>
-		PP.sep (PP.punctuate PP.comma (map PP.text ps)) PP.<+>
-		PP.text "#-}"
-
-data Module = Module {
-	modName :: String,
-	exportList :: Maybe [Export]
- } deriving Show
-
-data Import = Import {
-	packageName :: Maybe String,
-	isQualified :: Bool,
-	impModName ::  String,
-	asName :: Maybe String,
-	isHiding :: Bool,
-	importList :: Maybe [Export]
- } deriving Show
-
-data Export
-	= EMem Member
-	| EType String (Maybe [Member])
-	deriving Show
-
-data Member
-	= MVar String
-	| MOp String
-	deriving Show
 
 data Tkn
 	= TVar String
@@ -202,17 +165,18 @@ predVars (ClassP _ ts) = foldr1 union $ map typeVars ts
 predVars (EqualP t1 t2) = typeVars t1 `union` typeVars t2
 
 mkTupSec :: [Maybe Exp] -> Exp
-mkTupSec ms = LamE ps $ TupE $ mkEs vs ms
+mkTupSec ms = LamE ps $ TupE $ mkEs vars ms
 	where
-	vs = map (mkName . ('_' :) . show) $
-		take (length $ filter isNothing ms) [0 .. ]
-	ps = map VarP vs
+	vars = map (mkName . ('_' :) . show) $
+		take (length $ filter isNothing ms) ([0 .. ] :: [Int])
+	ps = map VarP vars
 	mkEs [] [] = []
 	mkEs vs (Just e : es) = e : mkEs vs es
 	mkEs (v : vs) (Nothing : es) = VarE v : mkEs vs es
+	mkEs _ _ = error "mkTupSec: bad"
 
 mkKindVars :: [()] -> [Name]
-mkKindVars = map (mkName . ('_' :) . show) . zipWith (flip const) [1 ..]
+mkKindVars = map (mkName . ('_' :) . show) . zipWith (flip const) ([1 ..] :: [Int])
 
 addPatC :: [Pat] -> Clause -> Clause
 addPatC as (Clause ps b d) = Clause (as ++ ps) b d
@@ -340,7 +304,7 @@ exp1 :: Exp
 	/ TDo:lx &(!(_, x)):lxp[pushX x] ss:stmts[popX]
 						{ return $ DoE ss }
 	/ TOBracket:lx r:exp TVBar:lx s0:stmt ss:(TComma:lx s:stmt { return s })*
-		TCBracket:lx			{ return $ CompE $ ss ++ [NoBindS r] }
+		TCBracket:lx			{ return $ CompE $ s0 : ss ++ [NoBindS r] }
 	/ TOBracket:lx TCBracket:lx		{ return $ ListE [] }
 	/ TOBracket:lx e0:exp es:(TComma:lx e:exp { return e })* TCBracket:lx
 						{ return $ ListE $ e0 : es }
@@ -525,20 +489,20 @@ dec1 :: Dec
 							Nothing }
 	/ TData:lx[(== Instance) <$> getEnv]
 		mc:(c:cxt TDRightArrow:lx { return c })?
-		(TCon c):lx ts:(t:typ { return t })*
+		(TCon cn):lx ts:(t:typ { return t })*
 		TEq:lx c0:cons cs:(TVBar:lx c:cons { return c })* md:drvng?
 						{ return $ DataInstD
 							(fromMaybe [] mc)
-							(mkName c) ts
+							(mkName cn) ts
 							(c0 : cs)
 							(fromMaybe [] md) }
 	/ TData:lx
 		mc:(c:cxt TDRightArrow:lx { return c })?
-		(TCon c):lx vs:((TVar v):lx { return $ mkName v })*
+		(TCon cn):lx vs:((TVar v):lx { return $ mkName v })*
 		TEq:lx c0:cons cs:(TVBar:lx c:cons { return c })* md:drvng?
 						{ return $ DataD
 							(fromMaybe [] mc)
-							(mkName c)
+							(mkName cn)
 							(map PlainTV vs)
 							(c0 : cs)
 							(fromMaybe [] md) }
@@ -633,14 +597,14 @@ gadtConss :: [[Name] -> Con]
 	/ mc:gadtCons?				{ return $ maybeToList mc }
 
 gadtCons :: ([Name] -> Con)
-	= (TCon c):lx TTypeDef:lx
+	= (TCon cn):lx TTypeDef:lx
 		mc:(c:cxt TDRightArrow:lx { return c })?
 		ts:(t:typApp TRightArrow:lx { return t })*
 		(TCon _):lx xs:typ1*
 		{ return (\ns -> ForallC
 				(maybe [] cxtToTVBs mc)
 				(fromMaybe [] mc ++ zipWith (EqualP . VarT) ns xs) $
-			NormalC (mkName c) $ map (\t -> (NotStrict, t)) ts) }
+			NormalC (mkName cn) $ map (\t -> (NotStrict, t)) ts) }
 --		{ return (\ns -> undefined) }
 
 {-
@@ -707,14 +671,14 @@ stmt :: Stmt
 	/ e:exp					{ return $ NoBindS e }
 	/ TLet:lx ds:decs'			{ return $ LetS ds }
 
-fieldExps :: [FieldExp] = fe:fieldE fes:(TComma:lx fe:fieldE { return fe })*
-						{ return $ fe : fes }
+fieldExps :: [FieldExp] = fe0:fieldE fes:(TComma:lx fe:fieldE { return fe })*
+						{ return $ fe0 : fes }
 
 fieldE :: FieldExp = (TVar v):lx TEq:lx e:exp	{ return (mkName v, e) }
 						
 
-fieldPats :: [FieldPat] = fp:fieldPt fps:(TComma:lx fp:fieldPt { return fp })*
-						{ return $ fp : fps }
+fieldPats :: [FieldPat] = fp0:fieldPt fps:(TComma:lx fp:fieldPt { return fp })*
+						{ return $ fp0 : fps }
 
 fieldPt :: FieldPat = (TVar v):lx TEq:lx p:pat	{ return (mkName v, p) }
 
@@ -793,7 +757,7 @@ lit :: Lit
 						{ return $ StringL s }
 	/ r1:<isDigit>+ '.' r2:<isDigit>+	{ return $ RationalL $
 							read (r1 ++ r2 ++ "%1") /
-							fromIntegral (10 ^
+							fromIntegral ((10 :: Int) ^
 								(length r2)) }
 	/ i:<isDigit>+				{ return $ IntegerL $ read i }
 

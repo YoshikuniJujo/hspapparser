@@ -6,4 +6,4 @@ main :: IO ()
 main = do
 	fp : _ <- getArgs
 	src <- readFile fp
-	print $ haskellSrc src
+	print $ ppr $ haskellSrc src
