@@ -310,7 +310,7 @@ exp1 :: Exp
 	/ (TLit l):lx				{ return $ LitE l }
 	/ !_:(TOParen:lx !_:expApp TCParen:lx)
 		TOParen:lx l:exp?
-		oo:((TOp o):lx { return o } / (TOpCon o): lx { return o })
+		oo:operator
 		r:exp? TCParen:lx
 						{ return $ InfixE l
 							(VarE $ mkName oo) r }
