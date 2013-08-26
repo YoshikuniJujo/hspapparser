@@ -445,9 +445,30 @@ decs_ :: [[Dec]]
 
 dec :: [Dec]
 	= d:dec1				{ return [d] }
-	/ (TVar v0):lx vs:(TComma:lx (TVar v):lx { return v })* TTypeDef:lx t:typ		
+	/ (TVar v0):lx vs:(TComma:lx (TVar v):lx { return v })* TTypeDef:lx t:typ
 						{ return $ map (flip SigD t .
 							mkName) $ v0 : vs }
+	/ TInfix:lx
+		(TLit (IntegerL n)):lx (TOp o0):lx
+		os:(TComma:lx (TOp o):lx { return o })*{ return $ map (InfixD $
+							Fixity (fromIntegral n)
+								InfixN) $
+								map mkName $
+								o0 : os }
+	/ TInfixl:lx
+		(TLit (IntegerL n)):lx (TOp o0):lx
+		os:(TComma:lx (TOp o):lx { return o })*{ return $ map (InfixD $
+							Fixity (fromIntegral n)
+								InfixL) $
+								map mkName $
+								o0 : os }
+	/ TInfixr:lx
+		(TLit (IntegerL n)):lx (TOp o0):lx
+		os:(TComma:lx (TOp o):lx { return o })*{ return $ map (InfixD $
+							Fixity (fromIntegral n)
+								InfixR) $
+								map mkName $
+								o0 : os }
 
 dec1 :: Dec
 	= p:pat b:body w:whr?			{ return $ ValD p b $
@@ -455,6 +476,12 @@ dec1 :: Dec
 	/ (TVar v0):lx c0:cls
 		mcs:(_:(TSemicolon:lx / '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst])+
 			(TVar v):lx[return $ v == v0] c:cls { return c })*
+						{ return $ FunD (mkName v0) $
+							c0 : mcs }
+	/ TOParen:lx (TOp v0):lx TCParen:lx c0:cls
+		mcs:(_:(TSemicolon:lx / '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst])+
+			TOParen:lx (TOp v):lx[return $ v == v0] TCParen:lx
+			c:cls { return c })*
 						{ return $ FunD (mkName v0) $
 							c0 : mcs }
 	/ l0:pat o0:operator r0:pat b0:body w0:whr?
@@ -551,14 +578,6 @@ dec1 :: Dec
 							(fromMaybe [] mc)
 							t ds }
 
-{-
-infixd :: [Dec]
-	= TInfix:lx (TLit (IntegerL n)):lx (TOp o0):lx
-		os:(TComma:lx (TOp o):lx { o })*{ return $ map (InfixD $
-							Fixity (fromIntegral n)
-								InfixN) $ o0 : os }
--}
-
 cons :: Con
 	= (TCon c):lx TOBrace:lx
 		vts:((TVar v):lx TTypeDef:lx t:typ { return (mkName v, NotStrict, t) })*
@@ -614,7 +633,7 @@ drvng :: [Name]
 						{ return $ mkName c0 : cs }
 
 cls :: Clause
-	= ps:pat1+ b:body w:whr?		{ return $ Clause ps b $
+	= ps:pat1* b:body w:whr?		{ return $ Clause ps b $
 							fromMaybe [] w }
 
 body :: Body
