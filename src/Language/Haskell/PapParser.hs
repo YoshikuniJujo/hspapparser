@@ -585,10 +585,15 @@ dec1 :: Dec
 
 cons :: Con
 	= (TCon c):lx TOBrace:lx
-		vts:((TVar v):lx TTypeDef:lx t:typ { return (mkName v, NotStrict, t) })*
-		TCBrace:lx			{ return $ RecC (mkName c) vts }
+		mvts:(v0:rec vts:(TComma:lx vt:rec { return vt })*
+			{ return $ v0 : vts })?
+		TCBrace:lx			{ return $ RecC (mkName c) $
+							fromMaybe [] mvts }
 	/ (TCon c):lx ts:(t:strictType { return t })*
 						{ return $ NormalC (mkName c) ts }
+
+rec :: (Name, Strict, Type)
+	= (TVar v):lx TTypeDef:lx t:typ		{ return (mkName v, NotStrict, t) }
 
 gadtConss' :: [[Name] -> Con]
 	= TOBrace:lx cs:gadtConss TCBrace:lx	{ return cs }
