@@ -1,4 +1,4 @@
-* [x | x <- [1, 2, 3]] のような形を実装する
+* data SF a = SF { runSF :: [a] } deriving Show
 
 * infix について
 	infix 3 ++, *, -, /, `hoge`

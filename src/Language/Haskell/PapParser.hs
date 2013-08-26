@@ -322,6 +322,8 @@ exp1 :: Exp
 	/ TDo:lx TOBrace:lx ss:stmts TCBrace:lx	{ return $ DoE ss }
 	/ TDo:lx &(!(_, x)):lxp[pushX x] ss:stmts[popX]
 						{ return $ DoE ss }
+	/ TOBracket:lx r:exp TVBar:lx s0:stmt ss:(TComma:lx s:stmt { return s })*
+		TCBracket:lx			{ return $ CompE $ ss ++ [NoBindS r] }
 	/ TOBracket:lx TCBracket:lx		{ return $ ListE [] }
 	/ TOBracket:lx e0:exp es:(TComma:lx e:exp { return e })* TCBracket:lx
 						{ return $ ListE $ e0 : es }
