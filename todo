@@ -1,4 +1,4 @@
-* data SF a = SF { runSF :: [a] } deriving Show
+* kind について
 
 * infix について
 	infix 3 ++, *, -, /, `hoge`

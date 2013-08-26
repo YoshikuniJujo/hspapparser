@@ -541,7 +541,10 @@ infixd :: [Dec]
 -}
 
 cons :: Con
-	= (TCon c):lx ts:(t:strictType { return t })*
+	= (TCon c):lx TOBrace:lx
+		vts:((TVar v):lx TTypeDef:lx t:typ { return (mkName v, NotStrict, t) })*
+		TCBrace:lx			{ return $ RecC (mkName c) vts }
+	/ (TCon c):lx ts:(t:strictType { return t })*
 						{ return $ NormalC (mkName c) ts }
 
 gadtConss' :: [[Name] -> Con]
@@ -741,6 +744,7 @@ escChar :: Char
 	/ '"'					{ return '"' }
 	/ 'n'					{ return '\n' }
 	/ 't'					{ return '\t' }
+	/ ds:<isDigit>+				{ return $ chr $ read ds }
 
 space	= _:<(`elem` " \t")>
 	/ _:('\n')[ gets $ null . fst ]
