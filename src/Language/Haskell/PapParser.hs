@@ -18,6 +18,8 @@ import Data.List
 import Control.Applicative
 import Control.Arrow
 
+import qualified Language.Haskell.TH.PprLib as PP
+
 data DecEnv = Normal | Class | Instance deriving (Eq, Show)
 
 type ParseM = State ([Int], DecEnv)
@@ -98,6 +100,11 @@ data Pragma
 	= LanguagePragma [String]
 	| OtherPragma String
 	deriving Show
+
+instance Ppr Pragma where
+	ppr (LanguagePragma ps) = PP.text "{-#" PP.<+> PP.text "LANGUAGE" PP.<+>
+		PP.sep (PP.punctuate PP.comma (map PP.text ps)) PP.<+>
+		PP.text "#-}"
 
 data Module = Module {
 	modName :: String,
