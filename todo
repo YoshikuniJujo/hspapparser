@@ -1,4 +1,4 @@
-* pattern guard
+* -1
 
 * infix について
 	infix 3 ++, *, -, /, `hoge`
@@ -23,3 +23,6 @@
 * kind について
 	今のところ、data Some :: * -> * -> * where ... には対応したが、
 	data Some :: * -> (* -> *) -> * where ... のような形には対応していない。
+
+* pattern guard
+	現在では NormalG は PatG [NoBindS e] となっているが、問題は無いと思う

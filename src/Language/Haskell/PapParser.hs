@@ -647,7 +647,9 @@ body' :: Body
 						{ return $ GuardedB gs }
 
 grd :: Guard
-	= e:exp					{ return $ NormalG e }
+	= s0:stmt ss:(TComma:lx s:stmt { return s })*
+						{ return $ PatG $ s0 : ss }
+	/ e:exp					{ return $ NormalG e }
 
 whr :: [Dec]
 	= TWhere:lx TOBrace:lx ds:decs TCBrace:lx
