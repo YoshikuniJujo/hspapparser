@@ -481,6 +481,16 @@ dec1 :: Dec
 							(map PlainTV vs)
 							(c0 : cs)
 							(fromMaybe [] md) }
+	/ TData:lx
+		mc:(c:cxt TDRightArrow:lx { return c })?
+		(TCon c):lx vs:((TVar v):lx { return $ mkName v })*
+		TWhere:lx cs:gadtConss' md:drvng?
+						{ return $ DataD
+							(fromMaybe [] mc)
+							(mkName c)
+							(map PlainTV vs)
+							(map ($ vs) cs)
+							(fromMaybe [] md) }
 	/ TNewtype:lx[(== Instance) <$> getEnv]
 		mc:(c:cxt TDRightArrow:lx { return c })?
 		(TCon c):lx ts:(t:typ { return t })*
@@ -531,6 +541,52 @@ infixd :: [Dec]
 cons :: Con
 	= (TCon c):lx ts:(t:strictType { return t })*
 						{ return $ NormalC (mkName c) ts }
+
+gadtConss' :: [[Name] -> Con]
+	= TOBrace:lx cs:gadtConss TCBrace:lx	{ return cs }
+	/ &_:(_:('\n' / _:space)* (!(_, x)):lxp[gets $
+		maybe False (x <=) . listToMaybe . fst])
+						{ return [] }
+	/ &_:(_:('\n' / _:space)* !_:lx)	{ return [] }
+	/ &(!(_, x)):lxp[pushX x] cs:gadtConss[popX]
+						{ return cs }
+
+gadtConss :: [[Name] -> Con]
+	= mc:gadtCons? TSemicolon:lx cs:gadtConss
+						{ return $ maybe cs (: cs) mc }
+	/ mc:gadtCons? _:(_:space / '\n')+ &(!(_, x)):lxp
+		[gets $ (== x) . head . fst] cs:gadtConss
+						{ return $ maybe cs (: cs) mc }
+	/ mc:gadtCons? _:(_:space / '\n')+ !_	{ return $ maybeToList mc }
+	/ mc:gadtCons?				{ return $ maybeToList mc }
+
+{-
+decs' :: [Dec]
+	= TOBrace:lx ds:decs TCBrace:lx		{ return ds }
+	/ &_:(_:('\n' / _:space)* (!(_, x)):lxp[gets $ maybe False (x <=) . listToMaybe . fst])
+						{ return [] }
+	/ &_:(_:('\n' / _:space)* !_:lx)	{ return [] }
+	/ &(!(_, x)):lxp[pushX x] ds:decs[popX]	{ return ds }
+
+decs :: [Dec]
+	= ds:decs_				{ return $ concat ds }
+
+decs_ :: [[Dec]]
+	= md:dec? TSemicolon:lx ds:decs_	{ return $ maybe ds (: ds) md }
+	/ md:dec? _:(_:space / '\n')+ &(!(_, x)):lxp[gets $ (== x) . head . fst]
+		ds:decs_
+						{ return $ maybe ds (: ds) md }
+	/ md:dec? _:(_:space / '\n')+ !_	{ return $ maybeToList md }
+	/ md:dec?				{ return $ maybeToList md }
+	/ !_:lx					{ return [] }
+-}
+
+gadtCons :: ([Name] -> Con)
+	= (TCon c):lx TTypeDef:lx ts:(t:typApp TRightArrow:lx { return t })*
+		(TCon _):lx xs:typ1*
+		{ return (\ns -> ForallC [] (zipWith (EqualP . VarT) ns xs) $
+			NormalC (mkName c) $ map (\t -> (NotStrict, t)) ts) }
+--		{ return (\ns -> undefined) }
 
 strictType :: (Strict, Type)
 	= (TOp "!"):lx t:typ			{ return (IsStrict, t) }

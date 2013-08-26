@@ -1,3 +1,11 @@
+* GADTs を parse しよう
+	data Hoge a where
+		Hage :: Int -> Hoge Int
+		Hige :: Eq a => Hoge a
+		|
+		V
+	data Hoge a = a ~ Int => Hage Int | Eq a => Hige
+
 * infix について
 	infix 3 ++, *, -, /, `hoge`
 	infixl
