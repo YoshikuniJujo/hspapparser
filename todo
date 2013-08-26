@@ -16,3 +16,5 @@
 
 * pattern guard
 	現在では NormalG は PatG [NoBindS e] となっているが、問題は無いと思う
+
+* arrow 記法は後回しにしよう

@@ -169,7 +169,6 @@ data Tkn
 	| TInfixr
 	| TImport
 	| TQualified
-	| TAs
 	| THiding
 	| TModule
 	| TSemicolon
@@ -208,6 +207,9 @@ mkTupSec ms = LamE ps $ TupE $ mkEs vs ms
 mkKindVars :: [()] -> [Name]
 mkKindVars = map (mkName . ('_' :) . show) . zipWith (flip const) [1 ..]
 
+addPatC :: [Pat] -> Clause -> Clause
+addPatC as (Clause ps b d) = Clause (as ++ ps) b d
+
 [papillon|
 
 monad: ParseM
@@ -244,7 +246,7 @@ imprts :: [Import]
 
 imprt :: Import
 	= TImport:lx mp:((TLit (StringL p)):lx { return p })? mq:(TQualified:lx)?
-		(TCon mod):lx masn:(TAs:lx (TCon asn):lx { return asn })?
+		(TCon mod):lx masn:((TVar "as"):lx (TCon asn):lx { return asn })?
 		mh:(THiding:lx)? mes:exports?
 						{ return $ Import mp (isJust mq)
 							mod masn (isJust mh) mes }
@@ -453,6 +455,10 @@ dec :: [Dec]
 	/ (TVar v0):lx vs:(TComma:lx (TVar v):lx { return v })* TTypeDef:lx t:typ
 						{ return $ map (flip SigD t .
 							mkName) $ v0 : vs }
+	/ TOParen:lx (TOp v0):lx TCParen:lx
+		vs:(TComma:lx (TVar v):lx { return v })* TTypeDef:lx t:typ
+						{ return $ map (flip SigD t .
+							mkName) $ v0 : vs }
 	/ TInfix:lx
 		(TLit (IntegerL n)):lx (TOp o0):lx
 		os:(TComma:lx (TOp o):lx { return o })*{ return $ map (InfixD $
@@ -489,6 +495,12 @@ dec1 :: Dec
 			c:cls { return c })*
 						{ return $ FunD (mkName v0) $
 							c0 : mcs }
+	/ TOParen:lx l0:pat (TOp v0):lx r0:pat TCParen:lx c0:cls
+		mcs:(_:(TSemicolon:lx / '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst])+
+			TOParen:lx l:pat (TOp v):lx[return $ v == v0] r:pat TCParen:lx
+			c:cls { return $ addPatC [l, r] c })*
+						{ return $ FunD (mkName v0) $
+							addPatC [l0, r0] c0 : mcs }
 	/ l0:pat o0:operator r0:pat b0:body w0:whr?
 		mcs:(_:(TSemicolon:lx / '\n'+ &(!(_, x)):lxp[gets $ (== x) . head . fst])+
 			l:pat o:operator[return $ o == o0] r:pat
@@ -733,7 +745,6 @@ tkn :: Tkn
 	/ 'i' 'm' 'p' 'o' 'r' 't' !_:<isVar>	{ return TImport }
 	/ 'q' 'u' 'a' 'l' 'i' 'f' 'i' 'e' 'd' !_:<isVar>
 						{ return TQualified }
-	/ 'a' 's' !_:<isVar>			{ return TAs }
 	/ 'h' 'i' 'd' 'i' 'n' 'g' !_:<isVar>	{ return THiding }
 	/ 'm' 'o' 'd' 'u' 'l' 'e' !_:<isVar>	{ return TModule }
 	/ '{' '-' '#'				{ return TOPragma }
