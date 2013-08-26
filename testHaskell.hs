@@ -142,6 +142,9 @@ instance SomeClass Other where
 
 {- comment {- nested comment -} {- nested comment -} nested-}
 
+(!!!) :: Int -> Int -> Int
+x !!! y = x + y * x
+
 instance SomeClass Hoge where
 	type SomeType Hoge = Int
 	data SomeData Hoge = Hogeru

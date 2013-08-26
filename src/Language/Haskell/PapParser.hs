@@ -364,9 +364,9 @@ typCxt :: Type
 
 typInf :: Type
 	= t0:typApp ts:(TRightArrow:lx t:typApp { return t })*
-						{ return $ foldl (\x y ->
-							ArrowT `AppT` x `AppT` y)
-							t0 ts }
+						{ return $ foldr1 (\x y ->
+							ArrowT `AppT` x `AppT` y) $
+							t0 : ts }
 
 typApp :: Type
 	= t:typ1 ts:typ1*			{ return $ foldl AppT t ts }
