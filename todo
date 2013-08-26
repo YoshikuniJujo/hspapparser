@@ -1,13 +1,3 @@
-* -1
-
-* infix について
-	infix 3 ++, *, -, /, `hoge`
-	infixl
-	infixr
-	今のバージョンでは無いので、どうしようかな?
-	ghc を update したいが、今ここでするのは不安要素が多い。
-	新しい Gentoo を vm 上に構築しようかな。
-
 * haskellSrc の逆関数を作ろう
 	ppr を使えば簡単にできそうに思う
 

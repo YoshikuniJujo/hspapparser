@@ -278,7 +278,7 @@ expA :: Exp = e:exp _:space* !_			{ return e }
 exp :: Exp = e:expInfix				{ return e }
 
 expInfix :: Exp =
-	lft:expApp ors:(o:operator r:expApp { return (VarE $ mkName o, r) })*
+	lft:expPrefix ors:(o:operator r:expPrefix { return (VarE $ mkName o, r) })*
 						{ return $ foldl
 							(\l (o, r) -> UInfixE l o r)
 							lft ors }
@@ -288,6 +288,11 @@ operator :: String
 	/ (TOpCon o):lx				{ return o }
 	/ TBackquote:lx (TVar v):lx TBackquote:lx
 						{ return v }
+
+expPrefix :: Exp
+	= m:((TOp "-"):lx)? e:expApp		{ return $ maybe e
+							(const $ VarE (mkName "-")
+								`AppE` e) m }
 
 expApp :: Exp = f:expSig as:expSig*		{ return $ foldl AppE f as }
 
