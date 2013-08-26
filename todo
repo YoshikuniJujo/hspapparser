@@ -1,5 +1,3 @@
-* kind について
-
 * infix について
 	infix 3 ++, *, -, /, `hoge`
 	infixl
@@ -19,3 +17,7 @@
 * type families について
 
 * pattern guard, view pattern については考える
+
+* kind について
+	今のところ、data Some :: * -> * -> * where ... には対応したが、
+	data Some :: * -> (* -> *) -> * where ... のような形には対応していない。

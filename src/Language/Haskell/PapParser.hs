@@ -205,6 +205,9 @@ mkTupSec ms = LamE ps $ TupE $ mkEs vs ms
 	mkEs vs (Just e : es) = e : mkEs vs es
 	mkEs (v : vs) (Nothing : es) = VarE v : mkEs vs es
 
+mkKindVars :: [()] -> [Name]
+mkKindVars = map (mkName . ('_' :) . show) . zipWith (flip const) [1 ..]
+
 [papillon|
 
 monad: ParseM
@@ -369,7 +372,11 @@ pat1 :: Pat
 
 typA :: Type = t:typ _:space* !_		{ return $ putForall t }
 
-typ :: Type = t:typCxt				{ return t }
+typ :: Type = t:typSig				{ return t }
+
+typSig :: Type
+	= t:typCxt mk:(TTypeDef:lx k:typ { return k })?
+						{ return $ maybe t (SigT t) mk }
 
 typCxt :: Type
 	= mc:(c:cxt TDRightArrow:lx { return c })? t:typInf
@@ -398,6 +405,7 @@ typ1 :: Type
 							(TupleT $ length ts) ts }
 	/ TOParen:lx TRightArrow:lx TCParen:lx	{ return ArrowT }
 	/ TOBracket:lx t:typ TCBracket:lx	{ return $ AppT ListT t }
+	/ (TOp "*"):lx				{ return StarT }
 
 typTup :: [Type] = t0:typ ts:(TComma:lx t:typ { return t })*
 						{ return $ t0 : ts }
@@ -493,6 +501,17 @@ dec1 :: Dec
 							(map PlainTV vs)
 							(map ($ vs) cs)
 							(fromMaybe [] md) }
+	/ TData:lx
+		mc:(c:cxt TDRightArrow:lx { return c })?
+		(TCon c):lx TTypeDef: lx
+		ss:((TOp "*"):lx TRightArrow:lx)* (TOp "*"):lx
+		TWhere:lx cs:gadtConss' md:drvng?
+						{ return $ DataD
+							(fromMaybe [] mc)
+							(mkName c)
+							(map PlainTV $ mkKindVars ss)
+							(map ($ mkKindVars ss) cs)
+							(fromMaybe [] md) }
 	/ TNewtype:lx[(== Instance) <$> getEnv]
 		mc:(c:cxt TDRightArrow:lx { return c })?
 		(TCon c):lx ts:(t:typ { return t })*
@@ -565,33 +584,24 @@ gadtConss :: [[Name] -> Con]
 	/ mc:gadtCons? _:(_:space / '\n')+ !_	{ return $ maybeToList mc }
 	/ mc:gadtCons?				{ return $ maybeToList mc }
 
-{-
-decs' :: [Dec]
-	= TOBrace:lx ds:decs TCBrace:lx		{ return ds }
-	/ &_:(_:('\n' / _:space)* (!(_, x)):lxp[gets $ maybe False (x <=) . listToMaybe . fst])
-						{ return [] }
-	/ &_:(_:('\n' / _:space)* !_:lx)	{ return [] }
-	/ &(!(_, x)):lxp[pushX x] ds:decs[popX]	{ return ds }
-
-decs :: [Dec]
-	= ds:decs_				{ return $ concat ds }
-
-decs_ :: [[Dec]]
-	= md:dec? TSemicolon:lx ds:decs_	{ return $ maybe ds (: ds) md }
-	/ md:dec? _:(_:space / '\n')+ &(!(_, x)):lxp[gets $ (== x) . head . fst]
-		ds:decs_
-						{ return $ maybe ds (: ds) md }
-	/ md:dec? _:(_:space / '\n')+ !_	{ return $ maybeToList md }
-	/ md:dec?				{ return $ maybeToList md }
-	/ !_:lx					{ return [] }
--}
-
 gadtCons :: ([Name] -> Con)
-	= (TCon c):lx TTypeDef:lx ts:(t:typApp TRightArrow:lx { return t })*
+	= (TCon c):lx TTypeDef:lx
+		mc:(c:cxt TDRightArrow:lx { return c })?
+		ts:(t:typApp TRightArrow:lx { return t })*
 		(TCon _):lx xs:typ1*
-		{ return (\ns -> ForallC [] (zipWith (EqualP . VarT) ns xs) $
+		{ return (\ns -> ForallC
+				(maybe [] cxtToTVBs mc)
+				(fromMaybe [] mc ++ zipWith (EqualP . VarT) ns xs) $
 			NormalC (mkName c) $ map (\t -> (NotStrict, t)) ts) }
 --		{ return (\ns -> undefined) }
+
+{-
+typCxt :: Type
+	= mc:(c:cxt TDRightArrow:lx { return c })? t:typInf
+						{ return $ maybe t (\c ->
+							ForallT (cxtToTVBs c) c t)
+							mc }
+							-}
 
 strictType :: (Strict, Type)
 	= (TOp "!"):lx t:typ			{ return (IsStrict, t) }
@@ -745,6 +755,9 @@ escChar :: Char
 	/ 'n'					{ return '\n' }
 	/ 't'					{ return '\t' }
 	/ ds:<isDigit>+				{ return $ chr $ read ds }
+	/ 'E' 'S' 'C'				{ return $ chr 27 }
+	/ 'B' 'S'				{ return $ chr 8 }
+	/ 'D' 'E' 'L'				{ return $ chr 127 }
 
 space	= _:<(`elem` " \t")>
 	/ _:('\n')[ gets $ null . fst ]
