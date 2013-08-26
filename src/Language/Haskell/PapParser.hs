@@ -85,7 +85,7 @@ isVar :: Char -> Bool
 isVar = (||) <$> isAlphaNum <*> (`elem` "'_")
 
 isOp :: Char -> Bool
-isOp = (`elem` "!#$%&*+./<=>?@\\^|-~")
+isOp = (`elem` "!#$%&*+./<=>?@\\^|-~:")
 
 data HsSrc = HsSrc {
 	srcPragmas :: [Pragma],
