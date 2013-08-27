@@ -151,6 +151,11 @@ putForall t = case typeVars t of
 	[] -> t
 	vs -> ForallT (map PlainTV vs) [] t
 
+addToForall :: Type -> Type
+addToForall t@(ForallT tvb cx t') =
+	ForallT (tvb ++ map PlainTV (typeVars t)) cx t'
+addToForall _ = error "addToForall: bad"
+
 typeVars :: Type -> [Name]
 typeVars (ForallT tvb _ t) = typeVars t \\ map (\(PlainTV v) -> v) tvb
 typeVars (AppT t1 t2) = typeVars t1 `union` typeVars t2
@@ -165,7 +170,9 @@ predVars (ClassP _ ts) = foldr1 union $ map typeVars ts
 predVars (EqualP t1 t2) = typeVars t1 `union` typeVars t2
 
 mkTupSec :: [Maybe Exp] -> Exp
-mkTupSec ms = LamE ps $ TupE $ mkEs vars ms
+mkTupSec ms
+	| null ps = TupE $ mkEs vars ms
+	| otherwise = LamE ps $ TupE $ mkEs vars ms
 	where
 	vars = map (mkName . ('_' :) . show) $
 		take (length $ filter isNothing ms) ([0 .. ] :: [Int])
@@ -264,7 +271,7 @@ operator :: String
 
 expPrefix :: Exp
 	= m:((TOp "-"):lx)? e:expApp		{ return $ maybe e
-							(const $ VarE (mkName "-")
+							(const $ VarE (mkName "negate")
 								`AppE` e) m }
 
 expApp :: Exp = f:expSig as:expSig*		{ return $ foldl AppE f as }
@@ -288,7 +295,7 @@ exp1 :: Exp
 						{ return $ InfixE l
 							(VarE $ mkName oo) r }
 	/ TOParen:lx TCParen:lx			{ return $ TupE [] }
-	/ TOParen:lx e:exp TCParen:lx		{ return e }
+	/ TOParen:lx e:exp TCParen:lx		{ return $ ParensE e }
 	/ TOParen:lx me0:exp? mes:(TComma:lx me:exp? { return me })+ TCParen:lx
 						{ return $ mkTupSec $ me0 : mes }
 	/ TBackslash:lx ps:pat1+ TRightArrow:lx e:exp
@@ -331,7 +338,7 @@ pat1 :: Pat
 	= (TLit l):lx				{ return $ LitP l }
 	/ !(TVar "_"):lx (TVar v):lx !TAt:lx	{ return $ VarP $ mkName v }
 	/ TOParen:lx
-		mps:(p0:pat ps:(TComma:lx p:pat { return p })*
+		mps:(p0:pat ps:(TComma:lx p:pat { return $ ParensP p })*
 			{ return $ p0 : ps })?
 		TCParen:lx			{ return $ TupP $ fromMaybe [] mps }
 	/ (TCon c):lx ps:pat*			{ return $ ConP (mkName c) ps }
@@ -359,6 +366,7 @@ typSig :: Type
 typCxt :: Type
 	= mc:(c:cxt TDRightArrow:lx { return c })? t:typInf
 						{ return $ maybe t (\c ->
+							addToForall $
 							ForallT (cxtToTVBs c) c t)
 							mc }
 

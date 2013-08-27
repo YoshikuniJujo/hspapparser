@@ -109,6 +109,9 @@ q = [haskell|
 
 |]
 
+double :: Double
+double = [haskell| 3.55 |]
+
 [haskell|
 
 t = t' where t' = t''
