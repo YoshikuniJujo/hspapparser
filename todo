@@ -3,6 +3,7 @@
 
 	RationalL の部分を小数点表示にする必要があるな。
 	n / d という形のほうが楽かな
+	めんどくさいけど、やらなければならないな。
 
 * Fuga.Hoge.Piyo や Fuga.Hoge.piyo を
 	["Fuga", "Hoge"] "Piyo", ["Fuga", "Hoge"] "piyo" のように格納しようかな
