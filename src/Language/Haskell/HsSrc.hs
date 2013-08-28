@@ -9,6 +9,8 @@ module Language.Haskell.HsSrc (
 
 import Language.Haskell.TH hiding (Pragma)
 import Language.Haskell.TH.PprLib
+-- import Language.Haskell.TH.Ppr
+import Language.Haskell.Ppr
 
 data HsSrc = HsSrc {
 	srcPragmas :: [Pragma],
@@ -18,20 +20,7 @@ data HsSrc = HsSrc {
  } deriving Show
 
 instance Ppr HsSrc where
-	ppr (HsSrc ps ms is ds) = ppr ps $$ ppr ms $$ ppr is $$ ppr_decs ds
-
-ppr_decs :: [Dec] -> Doc
-ppr_decs = vcat . map ppr_dec
-
-isOp :: String -> Bool
-isOp = all (`elem` "!#$%&*+./<=>?@\\^|-~:")
-
-ppr_dec :: Dec -> Doc
-ppr_dec (FunD f cs)
-	| isOp $ nameBase f = vcat $ map (\c -> parens (ppr f) <+> ppr c) cs
-ppr_dec (SigD f t)
-	| isOp $ nameBase f = parens (ppr f) <+> text "::" <+> ppr t
-ppr_dec d = ppr d
+	ppr (HsSrc ps ms is ds) = ppr ps $$ ppr ms $$ ppr is $$ ppr' ds
 
 data Pragma
 	= LanguagePragma [String]
