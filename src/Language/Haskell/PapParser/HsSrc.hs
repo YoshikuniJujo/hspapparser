@@ -1,4 +1,4 @@
-module Language.Haskell.HsSrc (
+module Language.Haskell.PapParser.HsSrc (
 	HsSrc(..),
 	Pragma(..),
 	Module(..),
@@ -10,7 +10,7 @@ module Language.Haskell.HsSrc (
 import Language.Haskell.TH hiding (Pragma)
 import Language.Haskell.TH.PprLib
 -- import Language.Haskell.TH.Ppr
-import Language.Haskell.Ppr
+import Language.Haskell.PapParser.Ppr
 
 data HsSrc = HsSrc {
 	srcPragmas :: [Pragma],

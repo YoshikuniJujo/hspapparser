@@ -1,7 +1,7 @@
 -- | contains a prettyprinter for the
 -- Template Haskell datatypes
 
-module Language.Haskell.Ppr (ppr') where
+module Language.Haskell.PapParser.Ppr (ppr') where
     -- All of the exports from this module should
     -- be "public" functions.  The main module TH
     -- re-exports them all.

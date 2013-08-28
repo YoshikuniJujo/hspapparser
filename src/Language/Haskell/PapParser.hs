@@ -18,7 +18,7 @@ import Data.Maybe
 import Data.List
 import Control.Arrow
 
-import Language.Haskell.HsSrc
+import Language.Haskell.PapParser.HsSrc
 
 data DecEnv = Normal | Class | Instance deriving (Eq, Show)
 
