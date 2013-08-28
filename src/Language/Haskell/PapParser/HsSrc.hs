@@ -8,9 +8,10 @@ module Language.Haskell.PapParser.HsSrc (
 ) where
 
 import Language.Haskell.TH hiding (Pragma)
-import Language.Haskell.TH.PprLib
--- import Language.Haskell.TH.Ppr
-import Language.Haskell.PapParser.Ppr
+import Language.Haskell.TH.PprLib (
+	text, sep, comma, parens, punctuate, (<>), (<+>), vcat, empty, ($$),
+	doubleQuotes)
+import Language.Haskell.PapParser.Ppr (ppr')
 
 data HsSrc = HsSrc {
 	srcPragmas :: [Pragma],

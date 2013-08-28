@@ -2,11 +2,7 @@
 -- Template Haskell datatypes
 
 module Language.Haskell.PapParser.Ppr (ppr') where
-    -- All of the exports from this module should
-    -- be "public" functions.  The main module TH
-    -- re-exports them all.
 
-import Text.PrettyPrint (render)
 import Language.Haskell.TH.PprLib
 import Language.Haskell.TH.Syntax
 import Data.Word ( Word8 )
@@ -29,9 +25,6 @@ parensIf True d = parens d
 parensIf False d = d
 
 ------------------------------
-
-pprint :: Ppr' a => a -> String
-pprint x = render $ to_HPJ_Doc $ ppr' x
 
 class Ppr' a where
     ppr' :: a -> Doc
@@ -285,6 +278,7 @@ ppr_dec isTop (NewtypeInstD ctxt tc tys c decs)
   where
     maybeInst | isTop     = text "instance"
               | otherwise = empty
+ppr_dec _ _ = error "ppr_dec: bad"
 {-
 ppr_dec isTop (TySynInstD tc (TySynEqn tys rhs))
   = ppr_tySyn maybeInst tc (sep (map pprParendType tys)) rhs
@@ -544,4 +538,3 @@ hashParens d = text "(# " <> d <> text " #)"
 
 quoteParens :: Doc -> Doc
 quoteParens d = text "'(" <> d <> text ")"
-
